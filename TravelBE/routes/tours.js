@@ -1,12 +1,15 @@
 const express = require('express');
 const router = express.Router();
+
 const auth = require('../middlewares/auth');
 const upload = require('../middlewares/upload');
 const admin = require('../middlewares/admin');
+
 const tourCtrl = require('../controllers/tourController');
 
 // Public list & detail
 router.get('/', tourCtrl.listTours);
+router.get('/admin', auth(['admin']), tourCtrl.getAllTours);
 router.get('/:id', tourCtrl.getTour);
 
 // Admin-only routes

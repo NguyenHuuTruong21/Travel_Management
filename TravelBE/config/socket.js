@@ -1,17 +1,25 @@
 // Export a function to attach socket.io to server
 module.exports = (server) => {
   const io = require('socket.io')(server, {
-    cors: { origin: process.env.CLIENT_URL || '*' }
+    cors: {
+      origin: process.env.CLIENT_URL || '*',
+      methods: ["GET", "POST"]
+    }
   });
 
-  // on connection: join a room for the user if client emits 'join'
   io.on('connection', (socket) => {
-    socket.on('join', (data) => {
-      // data = { userId }
-      if (data && data.userId) socket.join(`user:${data.userId}`);
+    console.log('User connected');
+
+    socket.on('join', ({ userId }) => {
+      if (userId) socket.join(`user:${userId}`);
     });
-    socket.on('leave', (data) => {
-      if (data && data.userId) socket.leave(`user:${data.userId}`);
+
+    socket.on('leave', ({ userId }) => {
+      if (userId) socket.leave(`user:${userId}`);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('User disconnected');
     });
   });
 

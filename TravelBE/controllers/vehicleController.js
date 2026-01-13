@@ -4,23 +4,36 @@ const Tour = require('../models/Tour');
 const Booking = require('../models/Booking');
 
 const VEHICLE_TYPES = ['bus', 'minivan', 'electric', 'boat', 'train', 'car'];
+const VEHICLE_STATUS = ['active', 'inactive', 'maintenance'];
 
-const normalizePlate = plate => (plate || '').trim().toUpperCase();
+const normalizePlate = plate => (
+  (plate || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '')
+);
 
-const hasUpcomingTours = async vehicleId => {
-  const tours = await Tour.find({ vehicle: vehicleId }).select('_id');
-  if (!tours.length) return false;
+const hasUpcomingTours = async (vehicleId) => {
+  try {
+    const tours = await Tour.find({ vehicle: vehicleId }).select('_id').lean();
+    if (!tours.length) return false;
 
-  const now = new Date();
-  const count = await Booking.countDocuments({
-    tour: { $in: tours.map(t => t._id) },
-    startDate: { $gte: now },
-    status: { $ne: 'Cancelled' }
-  });
+    const now = new Date();
+    const count = await Booking.countDocuments({
+      tour: { $in: tours.map(t => t._id) },
+      startDate: { $gte: now },
+      status: { $ne: 'Cancelled' }
+    });
 
-  return count > 0;
+    return count > 0;
+  } catch (err) {
+    console.error('hasUpcomingTours error:', err);
+    return false;
+  }
 };
 
+
+// CREATE
 exports.createVehicle = async (req, res) => {
   try {
     const { type, capacity, plateNumber, driverName, status } = req.body;
@@ -35,18 +48,20 @@ exports.createVehicle = async (req, res) => {
       return res.status(400).json({ message: 'Biển số là bắt buộc' });
     }
 
+    if (status && !VEHICLE_STATUS.includes(status)) {
+      return res.status(400).json({ message: 'Trạng thái phương tiện không hợp lệ' });
+    }
+
     const normalizedPlate = normalizePlate(plateNumber);
-    const exist = await Vehicle.findOne({ plateNumber: normalizedPlate });
+    const exist = await Vehicle.findOne({ plateNumber: normalizedPlate }).lean();
     if (exist) {
       return res.status(400).json({ message: 'Biển số đã tồn tại' });
     }
 
-    let image = '';
-    if (req.file) {
-      image = `/uploads/vehicles/${req.file.filename}`;
-    } else if (req.body.image) {
-      image = req.body.image;
-    }
+    // Handle image
+    let image = req.file
+      ? `/uploads/vehicles/${req.file.filename}`
+      : (req.body.image || '');
 
     const vehicle = await Vehicle.create({
       type,
@@ -71,9 +86,12 @@ exports.createVehicle = async (req, res) => {
   }
 };
 
+
+// UPDATE
 exports.updateVehicle = async (req, res) => {
   try {
     const { id } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Vehicle ID không hợp lệ' });
     }
@@ -83,13 +101,7 @@ exports.updateVehicle = async (req, res) => {
       return res.status(404).json({ message: 'Phương tiện không tồn tại' });
     }
 
-    const {
-      type,
-      capacity,
-      plateNumber,
-      driverName,
-      status
-    } = req.body;
+    const { type, capacity, plateNumber, driverName, status } = req.body;
 
     const upcoming = await hasUpcomingTours(vehicle._id);
 
@@ -104,7 +116,9 @@ exports.updateVehicle = async (req, res) => {
     }
 
     if (capacity !== undefined) {
-      if (Number(capacity) <= 0) return res.status(400).json({ message: 'Sức chứa phải > 0' });
+      if (Number(capacity) <= 0) {
+        return res.status(400).json({ message: 'Sức chứa phải > 0' });
+      }
       if (upcoming && Number(capacity) !== vehicle.capacity) {
         return res.status(400).json({ message: 'Không thể đổi sức chứa khi phương tiện đang phục vụ tour' });
       }
@@ -113,7 +127,11 @@ exports.updateVehicle = async (req, res) => {
 
     if (plateNumber) {
       const normalizedPlate = normalizePlate(plateNumber);
-      const exist = await Vehicle.findOne({ plateNumber: normalizedPlate, _id: { $ne: id } });
+      const exist = await Vehicle.findOne({
+        plateNumber: normalizedPlate,
+        _id: { $ne: id }
+      }).lean();
+
       if (exist) {
         return res.status(400).json({ message: 'Biển số đã tồn tại' });
       }
@@ -125,6 +143,14 @@ exports.updateVehicle = async (req, res) => {
     }
 
     if (status) {
+      if (!VEHICLE_STATUS.includes(status)) {
+        return res.status(400).json({ message: 'Trạng thái phương tiện không hợp lệ' });
+      }
+
+      if (upcoming && status === 'inactive') {
+        return res.status(400).json({ message: 'Phương tiện đang phục vụ tour, không thể ngừng hoạt động' });
+      }
+
       vehicle.status = status;
     }
 
@@ -136,19 +162,28 @@ exports.updateVehicle = async (req, res) => {
 
     await vehicle.save();
 
-    return res.json({ message: 'Cập nhật phương tiện thành công.', vehicle });
+    return res.json({
+      message: 'Cập nhật phương tiện thành công.',
+      vehicle
+    });
+
   } catch (error) {
     console.error('Update vehicle error:', error);
+
     if (error.code === 11000) {
       return res.status(400).json({ message: 'Biển số đã tồn tại' });
     }
+
     return res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
 
+
+// DELETE
 exports.deleteVehicle = async (req, res) => {
   try {
     const { id } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({ message: 'Vehicle ID không hợp lệ' });
     }
@@ -158,34 +193,39 @@ exports.deleteVehicle = async (req, res) => {
       return res.status(404).json({ message: 'Phương tiện không tồn tại' });
     }
 
-    const toursUsingVehicle = await Tour.find({ vehicle: vehicle._id });
+    const toursUsingVehicle = await Tour.find({ vehicle: vehicle._id }).lean();
 
     if (toursUsingVehicle.length > 0) {
       const upcoming = await hasUpcomingTours(vehicle._id);
+
       if (upcoming) {
         vehicle.status = 'inactive';
         await vehicle.save();
-        return res.json({ message: 'Phương tiện đã bị ngừng hoạt động', vehicle });
+        return res.json({ message: 'Phương tiện đã bị ngừng hoạt động do đang phục vụ tour', vehicle });
       }
 
-      // No upcoming bookings, detach from tours before delete
+      // Detach vehicle from tours
       await Tour.updateMany(
         { vehicle: vehicle._id },
-        { $unset: { vehicle: 1 } }
+        { $unset: { vehicle: "" } }
       );
     }
 
     await Vehicle.deleteOne({ _id: id });
+
     return res.json({ message: 'Xoá phương tiện thành công.' });
+
   } catch (error) {
     console.error('Delete vehicle error:', error);
     return res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
 
+
+// LIST
 exports.listVehicles = async (req, res) => {
   try {
-    const {
+    let {
       page = 1,
       limit = 10,
       type,
@@ -195,33 +235,49 @@ exports.listVehicles = async (req, res) => {
       q
     } = req.query;
 
+    page = Number(page);
+    limit = Number(limit);
+
     const filter = {};
+
     if (type) filter.type = type;
     if (status) filter.status = status;
-    if (minCapacity) filter.capacity = { ...(filter.capacity || {}), $gte: Number(minCapacity) };
-    if (maxCapacity) filter.capacity = { ...(filter.capacity || {}), $lte: Number(maxCapacity) };
-    if (q) filter.$or = [
-      { plateNumber: new RegExp(q, 'i') },
-      { driverName: new RegExp(q, 'i') }
-    ];
+
+    // fix capacity filter (allow 0)
+    if (minCapacity !== undefined) {
+      filter.capacity = { ...(filter.capacity || {}), $gte: Number(minCapacity) };
+    }
+    if (maxCapacity !== undefined) {
+      filter.capacity = { ...(filter.capacity || {}), $lte: Number(maxCapacity) };
+    }
+
+    if (q) {
+      const search = new RegExp(q, 'i');
+      filter.$or = [
+        { plateNumber: search },
+        { driverName: search }
+      ];
+    }
 
     const total = await Vehicle.countDocuments(filter);
     const vehicles = await Vehicle.find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ _id: -1 })     // sửa createdAt → dùng _id cho ổn định
       .skip((page - 1) * limit)
-      .limit(Number(limit))
+      .limit(limit)
       .lean();
 
-    // Attach number of tours referencing each vehicle
-    const vehicleIds = vehicles.map(v => v._id);
+    // Count tours
+    const ids = vehicles.map(v => v._id);
+
     const tourCounts = await Tour.aggregate([
-      { $match: { vehicle: { $in: vehicleIds } } },
+      { $match: { vehicle: { $in: ids } } },
       { $group: { _id: '$vehicle', count: { $sum: 1 } } }
     ]);
-    const countMap = tourCounts.reduce((acc, cur) => {
-      acc[cur._id.toString()] = cur.count;
-      return acc;
-    }, {});
+
+    const countMap = {};
+    tourCounts.forEach(t => {
+      countMap[t._id.toString()] = t.count;
+    });
 
     const data = vehicles.map(v => ({
       ...v,
@@ -229,15 +285,59 @@ exports.listVehicles = async (req, res) => {
     }));
 
     return res.json({
-      page: Number(page),
+      page,
       totalPages: Math.ceil(total / limit),
       total,
       data
     });
+
   } catch (error) {
     console.error('List vehicles error:', error);
     return res.status(500).json({ message: 'Lỗi server', error: error.message });
   }
 };
 
+// Get single vehicle (Admin)
+exports.getVehicle = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: 'ID không hợp lệ' });
 
+    const vehicle = await Vehicle.findById(id).lean();
+    if (!vehicle) return res.status(404).json({ message: 'Không tìm thấy phương tiện' });
+
+    res.json({ vehicle });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Public List Vehicles
+exports.getPublicVehicles = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 12, type } = req.query;
+    const filter = { status: 'active' };
+
+    if (type) filter.type = type;
+
+    const total = await Vehicle.countDocuments(filter);
+    const vehicles = await Vehicle.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    res.json({
+      data: vehicles,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};

@@ -8,260 +8,390 @@ const slugify = require('slugify');
 
 // Create tour (Admin)
 exports.createTour = async (req, res) => {
-    try {
-        const { name, price, duration, description, itinerary, location, capacity, type } = req.body;
+  try {
+    const { name, price, duration, description, itinerary, location, startLocation, capacity, type } = req.body;
 
-        // Validation
-        if (!name || !price) return res.status(400).json({ message: 'Thiếu tên hoặc giá tour' });
-        if (Number(price) <= 0) return res.status(400).json({ message: 'Giá phải lớn hơn 0' });
+    if (!name || !price)
+      return res.status(400).json({ message: 'Thiếu tên hoặc giá tour' });
+    if (Number(price) <= 0)
+      return res.status(400).json({ message: 'Giá phải lớn hơn 0' });
 
-        const exist = await Tour.findOne({ name });
-        if (exist) return res.status(400).json({ message: 'Tên tour đã tồn tại' });
+    const exist = await Tour.findOne({ name });
+    if (exist) return res.status(400).json({ message: 'Tên tour đã tồn tại' });
 
-        // images from multer (req.files) or req.body.images (urls)
-        const images = [];
-        if (req.files && req.files.length) {
-        req.files.forEach(f => images.push(`/uploads/tours/${f.filename}`));
-        } else if (req.body.images) {
-        // allow images = JSON string or array
-        const imgs = typeof req.body.images === 'string' ? JSON.parse(req.body.images) : req.body.images;
+    // Xử lý ảnh
+    const images = [];
+    if (req.files?.length) {
+      req.files.forEach(f => images.push(`/uploads/tours/${f.filename}`));
+    } else if (req.body.images) {
+      try {
+        const imgs = typeof req.body.images === 'string'
+          ? JSON.parse(req.body.images)
+          : req.body.images;
+
         if (Array.isArray(imgs)) images.push(...imgs);
-        }
-
-        if (images.length === 0) return res.status(400).json({ message: 'Yêu cầu ít nhất 1 ảnh' });
-        // itinerary: accept JSON string or array
-        const it = typeof itinerary === 'string' ? JSON.parse(itinerary) : (itinerary || []);
-        if (!Array.isArray(it) || it.length === 0) return res.status(400).json({ message: 'Yêu cầu ít nhất 1 lịch trình' });
-
-        // location: expect { address, coordinates: [lng,lat] }
-        const loc = typeof location === 'string' ? JSON.parse(location) : location;
-
-        const tour = await Tour.create({
-        name,
-        slug: slugify(name, { lower: true }),
-        price,
-        duration,
-        description,
-        itinerary: it,
-        images,
-        location: loc,
-        capacity: capacity || 0,
-        type: type || 'domestic',
-        status: 'active'
-        });
-
-        return res.status(201).json({ message: 'Tạo tour thành công', id: tour._id, tour });
+      } catch (e) {
+        return res.status(400).json({ message: 'Dữ liệu images không hợp lệ' });
+      }
     }
-    catch (error) {
-        console.error(error);
-        return res.status(500).json({ message: 'Lỗi server', error: error.message });
+
+    if (images.length === 0)
+      return res.status(400).json({ message: 'Yêu cầu ít nhất 1 ảnh' });
+
+    // Xử lý itinerary
+    let it = [];
+    try {
+      it = typeof itinerary === 'string' ? JSON.parse(itinerary) : itinerary || [];
+      if (!Array.isArray(it) || it.length === 0)
+        return res.status(400).json({ message: 'Yêu cầu ít nhất 1 lịch trình' });
+    } catch (err) {
+      return res.status(400).json({ message: 'Dữ liệu itinerary không hợp lệ' });
     }
+
+    // Xử lý location
+    let loc = location;
+    try {
+      if (typeof location === 'string') loc = JSON.parse(location);
+    } catch {
+      return res.status(400).json({ message: 'Dữ liệu location không hợp lệ' });
+    }
+
+    const tour = await Tour.create({
+      name,
+      slug: slugify(name, { lower: true }),
+      startLocation: startLocation || 'Hồ Chí Minh',
+      price,
+      duration,
+      description,
+      itinerary: it,
+      images,
+      location: loc,
+      capacity: capacity || 0,
+      type: type || 'domestic',
+      status: 'active'
+    });
+
+    return res.status(201).json({
+      message: 'Tạo tour thành công',
+      id: tour._id,
+      tour
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
 };
 
 // Update tour
 exports.updateTour = async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: 'Tour ID không hợp lệ' });
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: 'Tour ID không hợp lệ' });
 
-        const tour = await Tour.findById(id);
-        if (!tour || tour.status === 'deleted') return res.status(404).json({ message: 'Tour không tồn tại' });
+    const tour = await Tour.findById(id);
+    if (!tour || tour.status === 'deleted')
+      return res.status(404).json({ message: 'Tour không tồn tại' });
 
-        // If tour is currently 'inactive' or 'deleted', disallow update? spec: not edit if deleted or ongoing (we don't track ongoing here)
-        if (tour.status === 'deleted') return res.status(400).json({ message: 'Tour đã bị xóa' });
+    const up = req.body;
 
-        // handle fields
-        const up = req.body;
-        if (up.name) {
-        const exists = await Tour.findOne({ name: up.name, _id: { $ne: id } });
-        if (exists) return res.status(400).json({ message: 'Tên tour đã tồn tại' });
-        tour.name = up.name;
-        tour.slug = slugify(up.name, { lower: true });
-        }
-        if (up.price) {
-        if (Number(up.price) <= 0) return res.status(400).json({ message: 'Giá phải > 0' });
-        tour.price = up.price;
-        }
-        if (up.duration) tour.duration = up.duration;
-        if (up.description) tour.description = up.description;
-        if (up.capacity) tour.capacity = up.capacity;
-        if (up.type) tour.type = up.type;
-        if (up.location) tour.location = typeof up.location === 'string' ? JSON.parse(up.location) : up.location;
-        if (up.itinerary) tour.itinerary = typeof up.itinerary === 'string' ? JSON.parse(up.itinerary) : up.itinerary;
+    if (up.name) {
+      const exists = await Tour.findOne({ name: up.name, _id: { $ne: id } });
+      if (exists)
+        return res.status(400).json({ message: 'Tên tour đã tồn tại' });
 
-        // images - merge new uploads
-        if (req.files && req.files.length) {
-        const imgs = req.files.map(f => `/uploads/tours/${f.filename}`);
-        tour.images = tour.images.concat(imgs);
-        }
-
-        await tour.save();
-        return res.json({ message: 'Cập nhật tour thành công', tour });
+      tour.name = up.name;
+      tour.slug = slugify(up.name, { lower: true });
     }
-    catch (error) {
-        console.error(error);
-        return res.status(500).json({ message: 'Lỗi server', error: error.message });
+
+    if (up.price !== undefined) {
+      if (Number(up.price) <= 0)
+        return res.status(400).json({ message: 'Giá phải > 0' });
+
+      tour.price = up.price;
     }
+
+    if (up.duration !== undefined) tour.duration = up.duration;
+    if (up.description !== undefined) tour.description = up.description;
+    if (up.type !== undefined) tour.type = up.type;
+    if (up.capacity !== undefined) tour.capacity = up.capacity;
+    if (up.startLocation !== undefined) tour.startLocation = up.startLocation;
+
+    // Xử lý location
+    if (up.location) {
+      try {
+        tour.location = typeof up.location === 'string'
+          ? JSON.parse(up.location)
+          : up.location;
+      } catch {
+        return res.status(400).json({ message: 'Dữ liệu location không hợp lệ' });
+      }
+    }
+
+    // Xử lý itinerary
+    if (up.itinerary) {
+      try {
+        tour.itinerary = typeof up.itinerary === 'string'
+          ? JSON.parse(up.itinerary)
+          : up.itinerary;
+      } catch {
+        return res.status(400).json({ message: 'Dữ liệu itinerary không hợp lệ' });
+      }
+    }
+
+    // Thêm ảnh mới
+    if (req.files?.length) {
+      const imgs = req.files.map(f => `/uploads/tours/${f.filename}`);
+      tour.images = tour.images.concat(imgs);
+    }
+
+    // Xóa ảnh cũ nếu FE gửi removeImages
+    if (up.removeImages) {
+      const imagesToRemove = Array.isArray(up.removeImages) ? up.removeImages : [up.removeImages];
+      tour.images = tour.images.filter(img => !imagesToRemove.includes(img));
+    }
+
+    await tour.save();
+
+    return res.json({ message: 'Cập nhật tour thành công', tour });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+  }
 };
 
 // Delete tour
 exports.deleteTour = async (req, res) => {
-    try {
-        const {id} = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: 'Tour ID không hợp lệ' });
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id))
+      return res.status(400).json({ message: 'Tour ID không hợp lệ' });
 
-        const tour = await Tour.findById(id);
-        if (!tour) return res.status(404).json({ message: 'Tour không tồn tại' });
+    const tour = await Tour.findById(id);
+    if (!tour)
+      return res.status(404).json({ message: 'Tour không tồn tại' });
 
-        // check if booking exists (if Booking model available)
-        const Booking = mongoose.models.Booking;
-        if (Booking) {
-        const count = await Booking.countDocuments({ tour: tour._id });
-        if (count > 0) {
-            tour.status = 'inactive';
-            await tour.save();
-            return res.json({ message: 'Tour đã bị ngừng hoạt động vì đã có đơn đặt' });
-        }
-        }
-        // else remove fully
-        await Tour.deleteOne({ _id: id });
-        return res.json({ message: 'Tour đã được xoá thành công' });
+    // Kiểm tra booking đúng model đã import
+    const count = await Booking.countDocuments({ tour: tour._id });
+    if (count > 0) {
+      tour.status = 'inactive';
+      await tour.save();
+      return res.json({ message: 'Tour đã ngừng hoạt động vì có đơn đặt' });
     }
-    catch (error) {
-        console.error(error);
+
+    await Tour.deleteOne({ _id: id });
+    return res.json({ message: 'Tour đã được xoá thành công' });
+
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: 'Lỗi server' });
-    }
-}
+  }
+};
+
 
 // List tours
 exports.listTours = async (req, res) => {
-    try {
-        const {
-        page = 1,
-        limit = 10,
-        q, // search keyword
-        location,
-        minPrice,
-        maxPrice,
-        type,
-        minRating, // if reviews implemented
-        sortBy // price_asc, price_desc, newest, popularity
-        } = req.query;
+  try {
+    let {
+      page = 1,
+      limit = 10,
+      q,
+      location,
+      minPrice,
+      maxPrice,
+      type,
+      minRating,
+      sortBy,
+      startLocation
+    } = req.query;
 
-        const filter = { status: { $ne: 'deleted' } };
+    page = Math.max(1, Number(page));
+    limit = Math.min(50, Math.max(1, Number(limit))); // tránh limit quá lớn
 
-        if (location) filter['location.address'] = new RegExp(location, 'i');
-        if (type) filter.type = type;
-        if (minPrice) filter.price = { ...(filter.price || {}), $gte: Number(minPrice) };
-        if (maxPrice) filter.price = { ...(filter.price || {}), $lte: Number(maxPrice) };
-        if (q) filter.$or = [{ name: new RegExp(q, 'i') }, { description: new RegExp(q, 'i') }];
+    const filter = { status: 'active' };
 
-        let query = Tour.find(filter);
+    if (location) filter['location.address'] = new RegExp(location, 'i');
+    if (startLocation) filter.startLocation = new RegExp(startLocation, 'i');
+    if (type) filter.type = type;
 
-        // sorting
-        if (sortBy) {
-        if (sortBy === 'price_asc') query = query.sort({ price: 1 });
-        else if (sortBy === 'price_desc') query = query.sort({ price: -1 });
-        else if (sortBy === 'newest') query = query.sort({ createdAt: -1 });
-        // popularity would require bookings count - skip here
-        }
-
-        const total = await Tour.countDocuments(filter);
-        const tours = await query
-        .skip((page - 1) * limit)
-        .limit(Number(limit))
-        .lean();
-
-         // attach remainingSeats
-        const results = tours.map(t => ({ ...t, remainingSeats: Math.max(0, (t.capacity || 0) - (t.bookedSeats || 0)) }));
-
-        return res.json({
-            page: Number(page),
-            totalPages: Math.ceil(total / limit),
-            total,
-            data: results
-        });
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
-    catch (error) {
-         console.error(error);
+
+    if (q) {
+      filter.$or = [
+        { name: new RegExp(q, 'i') },
+        { description: new RegExp(q, 'i') }
+      ];
+    }
+
+    let query = Tour.find(filter);
+
+    const sortOptions = {
+      'price_asc': { price: 1 },
+      'price_desc': { price: -1 },
+      'newest': { createdAt: -1 }
+    };
+
+    if (sortBy && sortOptions[sortBy]) {
+      query = query.sort(sortOptions[sortBy]);
+    }
+
+    const total = await Tour.countDocuments(filter);
+
+    const tours = await query
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const results = tours.map(t => ({
+      ...t,
+      remainingSeats: Math.max(0, (t.capacity ?? 0) - (t.bookedSeats ?? 0))
+    }));
+
+    return res.json({
+      page,
+      totalPages: Math.ceil(total / limit),
+      total,
+      data: results
+    });
+
+  } catch (error) {
+    console.error(error);
     return res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+// Admin List Tours
+exports.getAllTours = async (req, res) => {
+  try {
+    let { page = 1, limit = 10, q, location, type, minPrice, maxPrice, startLocation } = req.query;
+    page = Math.max(1, Number(page));
+    limit = Math.min(50, Math.max(1, Number(limit)));
+
+    const filter = { status: { $ne: 'deleted' } };
+
+    if (location) filter['location.address'] = new RegExp(location, 'i');
+    if (startLocation) filter.startLocation = new RegExp(startLocation, 'i');
+    if (type) filter.type = type;
+    if (minPrice || maxPrice) {
+      filter.price = {};
+      if (minPrice) filter.price.$gte = Number(minPrice);
+      if (maxPrice) filter.price.$lte = Number(maxPrice);
     }
-}
+    if (q) {
+      filter.$or = [
+        { name: new RegExp(q, 'i') },
+        { description: new RegExp(q, 'i') }
+      ];
+    }
+
+    const total = await Tour.countDocuments(filter);
+    const tours = await Tour.find(filter)
+      .sort({ createdAt: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean();
+
+    const results = tours.map(t => ({
+      ...t,
+      remainingSeats: Math.max(0, (t.capacity ?? 0) - (t.bookedSeats ?? 0))
+    }));
+
+    return res.json({
+      page,
+      totalPages: Math.ceil(total / limit),
+      total,
+      data: results
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Lỗi server' });
+  }
+};
 
 // Get tour details
 exports.getTour = async (req, res) => {
-    try {
-        const { id } = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) return res.status(400).json({ message: 'Tour ID không hợp lệ' });
+  try {
+    const { id } = req.params;
 
-        const tour = await Tour.findById(id)
-            .populate('guide', 'name experience languages avatar description certificates toursCount')
-            .populate('vehicle', 'type capacity plateNumber driverName image status')
-            .lean();
-        if (!tour || tour.status === 'deleted') return res.status(404).json({ message: 'Tour không tồn tại' });
-
-        tour.remainingSeats = Math.max(0, (tour.capacity || 0) - (tour.bookedSeats || 0));
-
-        // Format guide info for display
-        if (tour.guide) {
-            tour.guideInfo = {
-                name: tour.guide.name,
-                experience: tour.guide.experience,
-                languages: tour.guide.languages,
-                avatar: tour.guide.avatar,
-                description: tour.guide.description,
-                certificates: tour.guide.certificates,
-                toursCount: tour.guide.toursCount
-            };
-        } else {
-            tour.guideInfo = null;
-        }
-
-        if (tour.vehicle) {
-            tour.vehicleInfo = {
-                type: tour.vehicle.type,
-                capacity: tour.vehicle.capacity,
-                plateNumber: tour.vehicle.plateNumber,
-                driverName: tour.vehicle.driverName,
-                image: tour.vehicle.image,
-                status: tour.vehicle.status
-            };
-        } else {
-            tour.vehicleInfo = null;
-        }
-
-         // optionally compute average rating or bookings count if other models exist
-        return res.json({ tour });
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: 'Tour ID không hợp lệ' });
     }
-    catch (error) {
-        console.error(error);
-        return res.status(500).json({ message: 'Lỗi server' });
+
+    const tour = await Tour.findById(id)
+      .populate('guide', 'name experience languages avatar description certificates toursCount status')
+      .populate('vehicle', 'type capacity plateNumber driverName image status')
+      .lean();
+
+    if (!tour || tour.status === 'deleted') {
+      return res.status(404).json({ message: 'Tour không tồn tại' });
     }
-}
+
+    tour.remainingSeats = Math.max(0, (tour.capacity ?? 0) - (tour.bookedSeats ?? 0));
+
+    // tour.guideInfo = tour.guide ? {
+    //   name: tour.guide.name,
+    //   experience: tour.guide.experience,
+    //   languages: tour.guide.languages,
+    //   avatar: tour.guide.avatar,
+    //   description: tour.guide.description,
+    //   certificates: tour.guide.certificates,
+    //   toursCount: tour.guide.toursCount
+    // } : null;
+
+    tour.vehicleInfo = tour.vehicle ? {
+      type: tour.vehicle.type,
+      capacity: tour.vehicle.capacity,
+      plateNumber: tour.vehicle.plateNumber,
+      driverName: tour.vehicle.driverName,
+      image: tour.vehicle.image,
+      status: tour.vehicle.status
+    } : null;
+
+    return res.json({ tour });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: 'Lỗi server' });
+  }
+};
 
 // Attach hotel to tour
 exports.attachHotelToTour = async (req, res, next) => {
   try {
-    const tourId = req.params.id;
+    const { id } = req.params;
     const { hotelId, note } = req.body;
 
-    const tour = await Tour.findById(tourId);
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(hotelId)) {
+      return res.status(400).json({ message: 'ID không hợp lệ' });
+    }
+
+    const tour = await Tour.findById(id);
     if (!tour) return res.status(404).json({ message: 'Tour không tồn tại' });
 
-    if (tour.status !== 'active') return res.status(400).json({ message: 'Không thể gắn khách sạn cho tour không hoạt động' });
+    if (tour.status !== 'active')
+      return res.status(400).json({ message: 'Không thể gắn khách sạn cho tour không hoạt động' });
 
     const hotel = await Hotel.findById(hotelId);
-    if (!hotel || hotel.status !== 'active') return res.status(400).json({ message: 'Khách sạn phải đang ở trạng thái active' });
+    if (!hotel || hotel.status !== 'active')
+      return res.status(400).json({ message: 'Khách sạn phải active' });
 
-    // prevent duplicate
-    const exists = tour.hotels && tour.hotels.find(h => String(h.hotel) === String(hotelId));
-    if (exists) return res.status(400).json({ message: 'Khách sạn đã được gắn cho tour này' });
+    const duplicated = tour.hotels?.some(h => h.hotel.equals(hotelId));
+    if (duplicated)
+      return res.status(400).json({ message: 'Khách sạn đã được gắn cho tour này' });
 
-    tour.hotels = tour.hotels || [];
-    tour.hotels.push({ hotel: hotel._id, note: note || '' });
+    tour.hotels.push({ hotel: hotelId, note: note || '' });
     await tour.save();
 
-    res.json({ message: 'Gắn khách sạn thành công', tour });
+    const updated = await Tour.findById(id)
+      .populate('hotels.hotel', 'name location stars image')
+      .lean();
+
+    res.json({ message: 'Gắn khách sạn thành công', tour: updated });
   } catch (err) {
     next(err);
   }
@@ -273,112 +403,91 @@ exports.assignGuideToTour = async (req, res, next) => {
     const tourId = req.params.id;
     const { guideId } = req.body;
 
-    if (!guideId) {
+    if (!guideId)
       return res.status(400).json({ message: 'Guide ID là bắt buộc' });
-    }
 
-    if (!mongoose.Types.ObjectId.isValid(tourId)) {
-      return res.status(400).json({ message: 'Tour ID không hợp lệ' });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(guideId)) {
-      return res.status(400).json({ message: 'Guide ID không hợp lệ' });
+    if (!mongoose.Types.ObjectId.isValid(tourId) || !mongoose.Types.ObjectId.isValid(guideId)) {
+      return res.status(400).json({ message: 'ID không hợp lệ' });
     }
 
     const tour = await Tour.findById(tourId);
-    if (!tour) {
-      return res.status(404).json({ message: 'Tour không tồn tại' });
-    }
+    if (!tour) return res.status(404).json({ message: 'Tour không tồn tại' });
 
-    if (tour.status !== 'active') {
+    if (tour.status !== 'active')
       return res.status(400).json({ message: 'Không thể gán guide cho tour không hoạt động' });
-    }
+
+    // Tour đã có Hướng dẫn viên
+    if (tour.guide && !tour.guide.equals(guideId))
+      return res.status(400).json({ message: 'Tour đã có guide. Chỉ được gán 1 guide.' });
 
     const guide = await Guide.findById(guideId);
-    if (!guide) {
-      return res.status(404).json({ message: 'Hướng dẫn viên không tồn tại' });
-    }
+    if (!guide) return res.status(404).json({ message: 'Guide không tồn tại' });
 
-    if (guide.status !== 'active') {
+    if (guide.status !== 'active')
       return res.status(400).json({ message: 'Guide phải đang active' });
-    }
 
-    // Check if tour already has a guide
-    if (tour.guide) {
-      return res.status(400).json({ message: 'Tour đã có hướng dẫn viên. Một tour chỉ được gán 1 guide phụ trách.' });
-    }
-
-    // Check if guide has available schedule for the tour dates
-    // We need to check bookings to get the tour dates
+    // ---- Kiểm tra lịch của tour ----
     const bookings = await Booking.find({
       tour: tour._id,
       status: { $ne: 'Cancelled' }
-    }).sort({ startDate: 1 });
+    });
 
-    if (bookings.length > 0) {
-      // Check guide's schedule for the booking dates
-      const tourDates = bookings.map(b => {
-        const d = new Date(b.startDate);
-        d.setHours(0, 0, 0, 0);
-        return d;
-      });
+    // Lấy danh sách ngày tour
+    const tourDates = [
+      ...new Set(
+        bookings.map(b => new Date(b.startDate).setHours(0, 0, 0, 0))
+      )
+    ].map(ms => new Date(ms));
 
-      // Remove duplicates
-      const uniqueTourDates = [...new Set(tourDates.map(d => d.getTime()))].map(t => new Date(t));
-
-      // Check if guide has available schedule for these dates
+    // Không có booking thì không cần check xung đột
+    if (tourDates.length) {
       const guideSchedule = guide.schedule || [];
-      
-      for (const tourDate of uniqueTourDates) {
-        const availableSlot = guideSchedule.find(slot => {
-          const slotDate = new Date(slot.date);
-          slotDate.setHours(0, 0, 0, 0);
-          return slotDate.getTime() === tourDate.getTime() && slot.isAvailable === true;
-        });
 
-        if (!availableSlot) {
-          return res.status(400).json({ 
-            message: `Guide không rảnh trong thời gian này (ngày ${tourDate.toLocaleDateString('vi-VN')})` 
+      // 1) Kiểm tra guide có rảnh không
+      for (const date of tourDates) {
+        const isFree = guideSchedule.some(slot =>
+          new Date(slot.date).setHours(0, 0, 0, 0) === date.getTime()
+          && slot.isAvailable === true
+        );
+
+        if (!isFree)
+          return res.status(400).json({
+            message: `Guide không rảnh vào ngày ${date.toLocaleDateString('vi-VN')}`
           });
-        }
       }
 
-      // Also check if guide is already assigned to another tour on the same date
-      const otherToursWithGuide = await Tour.find({
+      // 2) Kiểm tra guide có bận tour khác không
+      const otherTours = await Tour.find({
         guide: guide._id,
-        _id: { $ne: tourId },
+        _id: { $ne: tour._id },
         status: 'active'
       });
 
-      if (otherToursWithGuide.length > 0) {
-        const otherTourIds = otherToursWithGuide.map(t => t._id);
+      if (otherTours.length) {
         const otherBookings = await Booking.find({
-          tour: { $in: otherTourIds },
+          tour: { $in: otherTours.map(t => t._id) },
           status: { $ne: 'Cancelled' }
         });
 
-        for (const tourDate of uniqueTourDates) {
-          const conflict = otherBookings.find(b => {
-            const bDate = new Date(b.startDate);
-            bDate.setHours(0, 0, 0, 0);
-            return bDate.getTime() === tourDate.getTime();
-          });
+        for (const date of tourDates) {
+          const conflict = otherBookings.find(b =>
+            new Date(b.startDate).setHours(0, 0, 0, 0) === date.getTime()
+          );
 
           if (conflict) {
-            return res.status(400).json({ 
-              message: `Guide không rảnh trong thời gian này (đã được gán cho tour khác vào ngày ${tourDate.toLocaleDateString('vi-VN')})` 
+            return res.status(400).json({
+              message: `Guide đã được gán cho tour khác vào ngày ${date.toLocaleDateString('vi-VN')}`
             });
           }
         }
       }
     }
-    // If no bookings exist, allow assignment (admin should ensure schedule is set before bookings are made)
 
-    // Assign guide to tour
+    // gán hướng dẫn viên
     tour.guide = guide._id;
     await tour.save();
 
-    // Update guide's tours count
+    // cập nhật số tour phụ trách
     guide.toursCount = await Tour.countDocuments({ guide: guide._id });
     await guide.save();
 
@@ -386,15 +495,17 @@ exports.assignGuideToTour = async (req, res, next) => {
       .populate('guide', 'name experience languages avatar description certificates toursCount')
       .lean();
 
-    res.json({ 
-      message: 'Guide được gán cho tour thành công',
+    res.json({
+      message: 'Gán guide thành công',
       tour: updatedTour
     });
+
   } catch (err) {
     console.error('Assign guide error:', err);
     next(err);
   }
 };
+
 
 // Assign vehicle to tour (Admin)
 exports.assignVehicleToTour = async (req, res, next) => {
@@ -402,97 +513,79 @@ exports.assignVehicleToTour = async (req, res, next) => {
     const tourId = req.params.id;
     const { vehicleId } = req.body;
 
-    if (!vehicleId) {
-      return res.status(400).json({ message: 'Vehicle ID là bắt buộc' });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(tourId)) {
-      return res.status(400).json({ message: 'Tour ID không hợp lệ' });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(vehicleId)) {
-      return res.status(400).json({ message: 'Vehicle ID không hợp lệ' });
+    if (!mongoose.Types.ObjectId.isValid(tourId) || !mongoose.Types.ObjectId.isValid(vehicleId)) {
+      return res.status(400).json({ message: 'ID không hợp lệ' });
     }
 
     const tour = await Tour.findById(tourId);
-    if (!tour) {
-      return res.status(404).json({ message: 'Tour không tồn tại' });
-    }
+    if (!tour) return res.status(404).json({ message: 'Tour không tồn tại' });
 
-    if (tour.status !== 'active') {
+    if (tour.status !== 'active')
       return res.status(400).json({ message: 'Không thể gán phương tiện cho tour không hoạt động' });
-    }
 
     const vehicle = await Vehicle.findById(vehicleId);
-    if (!vehicle) {
-      return res.status(404).json({ message: 'Phương tiện không tồn tại' });
+    if (!vehicle) return res.status(404).json({ message: 'Phương tiện không tồn tại' });
+
+    if (vehicle.status !== 'active')
+      return res.status(400).json({ message: 'Phương tiện phải active' });
+
+    // Tour có vehicle khác → không cho đổi
+    if (tour.vehicle && !tour.vehicle.equals(vehicleId)) {
+      return res.status(400).json({ message: 'Tour đã có phương tiện. Vui lòng bỏ gán trước khi đổi.' });
     }
 
-    if (vehicle.status !== 'active') {
-      return res.status(400).json({ message: 'Phương tiện phải đang active' });
-    }
-
-    if (tour.vehicle && String(tour.vehicle) !== String(vehicleId)) {
-      return res.status(400).json({ message: 'Tour đã có phương tiện. Vui lòng bỏ gán trước khi chọn phương tiện khác.' });
-    }
-
-    // Check tour bookings to detect date conflicts
+    // ---- Kiểm tra xung đột ngày ----
     const bookings = await Booking.find({
       tour: tour._id,
       status: { $ne: 'Cancelled' }
-    }).sort({ startDate: 1 });
+    });
 
-    const bookingDates = [
+    const tourDates = [
       ...new Set(
-        bookings.map(b => {
-          const d = new Date(b.startDate);
-          d.setHours(0, 0, 0, 0);
-          return d.getTime();
-        })
+        bookings.map(b => new Date(b.startDate).setHours(0, 0, 0, 0))
       )
-    ].map(ts => new Date(ts));
+    ].map(ms => new Date(ms));
 
-    if (bookingDates.length) {
+    if (tourDates.length) {
       const otherTours = await Tour.find({
         vehicle: vehicle._id,
         _id: { $ne: tour._id },
         status: 'active'
-      }).select('_id');
+      });
 
-      if (otherTours.length > 0) {
-        const otherTourIds = otherTours.map(t => t._id);
+      if (otherTours.length) {
         const otherBookings = await Booking.find({
-          tour: { $in: otherTourIds },
+          tour: { $in: otherTours.map(t => t._id) },
           status: { $ne: 'Cancelled' }
         });
 
-        for (const date of bookingDates) {
-          const conflict = otherBookings.find(b => {
-            const start = new Date(b.startDate);
-            start.setHours(0, 0, 0, 0);
-            return start.getTime() === date.getTime();
-          });
+        for (const date of tourDates) {
+          const conflict = otherBookings.find(b =>
+            new Date(b.startDate).setHours(0, 0, 0, 0) === date.getTime()
+          );
 
           if (conflict) {
             return res.status(400).json({
-              message: `Phương tiện đang bận trong thời gian này (ngày ${date.toLocaleDateString('vi-VN')})`
+              message: `Phương tiện bận vào ngày ${date.toLocaleDateString('vi-VN')}`
             });
           }
         }
       }
     }
 
+    // gán phương tiện
     tour.vehicle = vehicle._id;
     await tour.save();
 
-    const updatedTour = await Tour.findById(tourId)
+    const updated = await Tour.findById(tourId)
       .populate('vehicle', 'type capacity plateNumber driverName image status')
       .lean();
 
-    return res.json({
-      message: 'Phương tiện được gán cho tour thành công',
-      tour: updatedTour
+    res.json({
+      message: 'Gán phương tiện thành công',
+      tour: updated
     });
+
   } catch (err) {
     console.error('Assign vehicle error:', err);
     next(err);

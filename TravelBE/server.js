@@ -43,6 +43,21 @@ app.use('/api/reports', reportRoutes);
 const notificationRoutes = require('./routes/notifications');
 app.use('/api/notifications', notificationRoutes);
 
+const adminRoutes = require('./routes/admin');
+app.use('/api/admin', adminRoutes);
+
+const postRoutes = require('./routes/posts');
+app.use('/api/posts', postRoutes);
+
+const bannerRoutes = require('./routes/banners'); // Banners also missing public route
+app.use('/api/banners', bannerRoutes);
+
+const promotionRoutes = require('./routes/promotions');
+app.use('/api/promotions', promotionRoutes);
+
+const contactRoutes = require('./routes/contact');
+app.use('/api/contacts', contactRoutes);
+
 
 // static uploads
 const path = require('path');
@@ -59,5 +74,19 @@ const io = createSocket(server);
 // iinit notification util with io
 notification.init(io);
 
+// socket connection - optional: log and allow join
+io.on('connection', (socket) => {
+  console.log('Socket connected', socket.id);
+  socket.on('join', ({ userId }) => {
+    if (userId) socket.join(`user:${userId}`);
+  });
+  socket.on('leave', (data) => {
+    if (data && data.userId) socket.leave(`user:${data.userId}`);
+  });
+  socket.on('disconnect', () => {
+    // console.log('Socket disconnected', socket.id);
+  });
+});
+
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server chạy tại PORT ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server chạy tại PORT ${PORT}`));

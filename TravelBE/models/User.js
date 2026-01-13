@@ -1,42 +1,87 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 
+// ===== USER SCHEMA =====
 const UserSchema = new mongoose.Schema(
   {
-    username: { type: String, unique: true, sparse: true },
-    fullName: String,
-    phoneNumber: String,
+    username: {
+      type: String,
+      unique: true,
+      sparse: true,
+      trim: true,
+      minlength: 3,
+      maxlength: 50
+    },
 
-    email: { type: String, unique: true, required: true },
+    fullName: {
+      type: String,
+      trim: true,
+      maxlength: 100
+    },
 
-    password: { type: String, required: true },
+    avatar: {
+      type: String
+    },
 
-    province: String,
-    district: String,
+    phoneNumber: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: function (v) {
+          if (!v) return true;
+          return /^[0-9]{9,15}$/.test(v);
+        },
+        message: "Invalid phone number"
+      }
+    },
+
+    email: {
+      type: String,
+      unique: true,
+      required: [true, "Email is required"],
+      trim: true,
+      lowercase: true,
+      validate: {
+        validator: function (v) {
+          return /^\S+@\S+\.\S+$/.test(v);
+        },
+        message: "Invalid email format"
+      }
+    },
+
+    password: {
+      type: String,
+      required: [true, "Password required"],
+      minlength: 6
+    },
+
+    province: { type: String, trim: true },
+    district: { type: String, trim: true },
 
     agreedToTerms: { type: Boolean, default: false },
 
-    roles: { type: [String], default: ["user"] },
+    roles: {
+      type: [String],
+      enum: ["user", "admin", "guide"],
+      default: ["user"]
+    },
 
+    // Trạng thái tài khoản
     status: {
       type: String,
       enum: ["inactive", "active", "deleted"],
       default: "inactive"
     },
 
+    // Bảo mật
     locked: { type: Boolean, default: false },
-    failedLoginAttempts: { type: Number, default: 0 },
+    failedLoginAttempts: { type: Number, default: 0, min: 0 },
 
-    verificationToken: String,
-
-    resetPasswordToken: {
-      token: String,
-      expiresAt: Date
-    },
+    verificationToken: String, // Xác minh email
 
     refreshTokens: [
       {
-        token: String,
+        token: { type: String, required: true },
         createdAt: { type: Date, default: Date.now }
       }
     ]
@@ -44,15 +89,21 @@ const UserSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password
+// ===== HASH PASSWORD =====
 UserSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
-  next();
+  try {
+    if (!this.isModified("password")) return next();
+
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+
+    next();
+  } catch (err) {
+    next(err);
+  }
 });
 
-// So sánh mật khẩu
+// ===== COMPARE PASSWORD =====
 UserSchema.methods.comparePassword = function (candidate) {
   return bcrypt.compare(candidate, this.password);
 };

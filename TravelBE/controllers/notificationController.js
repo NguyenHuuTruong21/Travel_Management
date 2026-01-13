@@ -1,84 +1,106 @@
 const Notification = require('../models/Notification');
-const User = require('../models/User');
 const notificationUtil = require('../utils/notification');
+const User = require('../models/User');
 
 // Create notification via API (from other modules)
 exports.create = async (req, res, next) => {
   try {
-    const { userId, title, message, type, metadata, sendEmail } = req.body;
+    const { userId, title, message, type, metadata, sendEmail, emailTo, isImportant } = req.body;
 
-    if (!userId || !title || !message) return res.status(400).json({ message: 'userId/title/message required' });
+    if (!userId || !title || !message)
+      return res.status(400).json({ error: 'userId, title, message are required' });
 
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user)
+      return res.status(404).json({ error: 'User not found' });
 
-    const notif = await notificationUtil.createAndDeliver({
+    const notification = await notificationUtil.createAndDeliver({
       userId,
       title,
       message,
-      type,
-      metadata,
-      sendEmail: !!sendEmail,
-      emailTo: user.email
+      type: type || 'general',
+      metadata: metadata || {},
+      sendEmail: Boolean(sendEmail),
+      emailTo,
+      isImportant: Boolean(isImportant)
     });
 
-    res.status(201).json({ notification: notif });
-  } catch (err) { next(err); }
+    res.status(201).json({ data: notification });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // Get notifications for current user with pagination and filter
 exports.getForUser = async (req, res, next) => {
   try {
+    if (!req.user || !req.user.id)
+      return res.status(401).json({ error: 'Unauthorized' });
+
     const userId = req.user.id;
+
     const page = parseInt(req.query.page || 1);
     const limit = parseInt(req.query.limit || 20);
-    const type = req.query.type; // optional filter
-    const skip = (page - 1) * limit;
+    const type = req.query.type || null;
 
-    const filter = { user: userId };
-    if (type) filter.type = type;
+    const list = await notificationUtil.listForUser(userId, { page, limit, type });
+    const unreadCount = await notificationUtil.countUnread(userId);
 
-    const [total, items, unreadCount] = await Promise.all([
-      Notification.countDocuments(filter),
-      Notification.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
-      Notification.countDocuments({ user: userId, isRead: false })
-    ]);
-
-    res.json({ page, totalPages: Math.ceil(total / limit), total, unreadCount, data: items });
-  } catch (err) { next(err); }
+    res.json({
+      data: list.data,
+      pagination: {
+        page: list.page,
+        total: list.total,
+        totalPages: list.totalPages
+      },
+      unreadCount
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // Mark a notification as read
 exports.markRead = async (req, res, next) => {
   try {
+    if (!req.user || !req.user.id)
+      return res.status(401).json({ error: 'Unauthorized' });
+
     const userId = req.user.id;
     const id = req.params.id;
-    const notif = await Notification.findById(id);
-    if (!notif) return res.status(404).json({ message: 'Not found' });
-    if (String(notif.user) !== String(userId)) return res.status(403).json({ message: 'No access' });
 
-    // For important system/security notifications require detail opened to mark read
-    if (notif.type === 'security' || notif.isImportant) {
-      // only mark read when explicitly opened (this endpoint is explicit)
-    }
+    const notif = await notificationUtil.markRead(userId, id);
+    if (!notif)
+      return res.status(404).json({ error: 'Notification not found or not allowed' });
 
-    notif.isRead = true;
-    notif.readAt = new Date();
-    await notif.save();
-
-    res.json({ message: 'Marked read', notification: notif });
-  } catch (err) { next(err); }
+    res.json({
+      message: 'Notification marked as read',
+      data: notif
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 // Mark multiple as read (by ids)
 exports.markManyRead = async (req, res, next) => {
   try {
+    if (!req.user || !req.user.id)
+      return res.status(401).json({ error: 'Unauthorized' });
+
     const userId = req.user.id;
-    const { ids } = req.body; // array of ids
-    if (!Array.isArray(ids)) return res.status(400).json({ message: 'ids array required' });
+    const { ids } = req.body;
 
-    await Notification.updateMany({ _id: { $in: ids }, user: userId }, { $set: { isRead: true, readAt: new Date() } });
+    if (!Array.isArray(ids) || ids.length === 0)
+      return res.status(400).json({ error: 'ids[] required' });
 
-    res.json({ message: 'Marked read' });
-  } catch (err) { next(err); }
+    const result = await notificationUtil.markManyRead(userId, ids);
+
+    res.json({
+      message: 'Notifications marked as read',
+      data: result
+    });
+  } catch (err) {
+    next(err);
+  }
 };

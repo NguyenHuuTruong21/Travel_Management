@@ -4,18 +4,18 @@ const Booking = require('../models/Booking');
 const mongoose = require('mongoose');
 
 // Create guide (Admin)
-exports.createGuide = async (req, res) => {
+exports.createGuide = async (req, res, next) => {
   try {
-    const { name, experience, languages, description, certificates } = req.body;
+    const { name, phone, email, experience, languages, description, certificates } = req.body;
 
     // Validation
     if (!name) return res.status(400).json({ message: 'Tên hướng dẫn viên là bắt buộc' });
     if (experience === undefined || Number(experience) < 0) {
       return res.status(400).json({ message: 'Kinh nghiệm phải >= 0 năm' });
     }
-    if (!languages || !Array.isArray(languages) || languages.length === 0) {
+    const languageArr = Array.isArray(languages) ? languages : [languages].filter(Boolean);
+    if (languageArr.length === 0)
       return res.status(400).json({ message: 'Phải có ít nhất 1 ngôn ngữ' });
-    }
 
     // Check duplicate name
     const exist = await Guide.findOne({ name });
@@ -23,41 +23,39 @@ exports.createGuide = async (req, res) => {
       return res.status(400).json({ message: 'Tên hướng dẫn viên đã tồn tại' });
     }
 
-    // Handle avatar upload
-    let avatar = '';
-    if (req.file) {
-      avatar = `/uploads/guides/${req.file.filename}`;
-    } else if (req.body.avatar) {
-      avatar = req.body.avatar;
-    } else {
-      return res.status(400).json({ message: 'Ảnh đại diện là bắt buộc' });
-    }
+    // Image
+    let avatar = req.file
+      ? `/uploads/guides/${req.file.filename}`
+      : req.body.avatar || null;
+
+    if (!avatar) return res.status(400).json({ message: 'Ảnh đại diện là bắt buộc' });
 
     const guide = await Guide.create({
       name,
+      phone,
+      email,
       experience: Number(experience),
-      languages: Array.isArray(languages) ? languages : [languages],
+      languages: languageArr,
       avatar,
       description: description || '',
-      certificates: certificates ? (Array.isArray(certificates) ? certificates : [certificates]) : []
+      certificates: Array.isArray(certificates)
+        ? certificates
+        : [certificates].filter(Boolean)
     });
 
-    return res.status(201).json({ 
+    return res.status(201).json({
       message: 'Hướng dẫn viên đã được thêm thành công.',
-      id: guide._id,
-      guide 
+      data: guide
     });
-  } catch (error) {
-    console.error('Create guide error:', error);
-    if (error.code === 11000) {
+  } catch (err) {
+    if (err.code === 11000)
       return res.status(400).json({ message: 'Tên hướng dẫn viên đã tồn tại' });
-    }
-    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+    next(err);
   }
 };
 
 // Update guide (Admin)
-exports.updateGuide = async (req, res) => {
+exports.updateGuide = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -74,7 +72,7 @@ exports.updateGuide = async (req, res) => {
     const ongoingTours = await Tour.find({
       guide: guide._id,
       status: 'active'
-    }).populate('guide');
+    });
 
     // Check if there are bookings with startDate >= now
     const upcomingBookings = await Booking.find({
@@ -83,75 +81,65 @@ exports.updateGuide = async (req, res) => {
       status: { $ne: 'Cancelled' }
     });
 
-    const hasOngoingTours = upcomingBookings.length > 0;
+    const locked = upcomingBookings.length > 0;
 
-    const { name, experience, languages, description, certificates } = req.body;
+    const { name, phone, email, experience, languages, description, certificates, status } = req.body;
 
-    // If guide has ongoing tours, restrict name and avatar changes
-    if (hasOngoingTours) {
-      if (name && name !== guide.name) {
-        return res.status(400).json({ 
-          message: 'Không thể thay đổi tên khi hướng dẫn viên đang gắn tour đang diễn ra' 
-        });
-      }
-    }
+    // Restrict change name if guide is active in tours
+    if (locked && name && name !== guide.name)
+      return res.status(400).json({ message: 'Không thể đổi tên khi đang có tour diễn ra' });
 
-    // Check duplicate name if changing
+    // Duplicate name check
     if (name && name !== guide.name) {
-      const exist = await Guide.findOne({ name, _id: { $ne: id } });
-      if (exist) {
-        return res.status(400).json({ message: 'Tên hướng dẫn viên đã tồn tại' });
-      }
+      const exists = await Guide.findOne({ name, _id: { $ne: id } });
+      if (exists) return res.status(400).json({ message: 'Tên hướng dẫn viên đã tồn tại' });
       guide.name = name;
     }
 
+    if (phone !== undefined) guide.phone = phone;
+    if (email !== undefined) guide.email = email;
+    if (status !== undefined) guide.status = status;
+
     if (experience !== undefined) {
-      if (Number(experience) < 0) {
+      if (Number(experience) < 0)
         return res.status(400).json({ message: 'Kinh nghiệm phải >= 0 năm' });
-      }
       guide.experience = Number(experience);
     }
 
-    if (languages) {
-      guide.languages = Array.isArray(languages) ? languages : [languages];
-    }
+    if (languages)
+      guide.languages = Array.isArray(languages)
+        ? languages
+        : [languages].filter(Boolean);
 
-    if (description !== undefined) {
+    if (description !== undefined)
       guide.description = description;
-    }
 
-    if (certificates !== undefined) {
-      guide.certificates = Array.isArray(certificates) ? certificates : [certificates];
-    }
+    if (certificates !== undefined)
+      guide.certificates = Array.isArray(certificates)
+        ? certificates
+        : [certificates].filter(Boolean);
 
-    // Handle avatar update
-    if (req.file) {
-      // If has ongoing tours, warn but allow (or restrict based on requirement)
-      if (hasOngoingTours) {
-        // Still allow but could add warning
-      }
+    if (req.file)
       guide.avatar = `/uploads/guides/${req.file.filename}`;
-    } else if (req.body.avatar) {
+    else if (req.body.avatar)
       guide.avatar = req.body.avatar;
-    }
 
     await guide.save();
 
-    return res.json({ 
+    res.json({
       message: 'Cập nhật thông tin hướng dẫn viên thành công.',
-      guide 
+      data: guide
     });
-  } catch (error) {
-    console.error('Update guide error:', error);
-    if (error.code === 11000) {
+  } catch (err) {
+    if (err.code === 11000)
       return res.status(400).json({ message: 'Tên hướng dẫn viên đã tồn tại' });
-    }
-    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+    next(err);
   }
 };
 
+
 // Delete guide (Admin)
-exports.deleteGuide = async (req, res) => {
+exports.deleteGuide = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -164,47 +152,41 @@ exports.deleteGuide = async (req, res) => {
     }
 
     // Check if guide is assigned to tours
-    const toursWithGuide = await Tour.find({ guide: guide._id });
-    
-    if (toursWithGuide.length > 0) {
-      // Check if any tour has upcoming bookings
+    const tours = await Tour.find({ guide: id });
+
+    // Has assigned tours?
+    if (tours.length > 0) {
       const now = new Date();
-      const upcomingBookings = await Booking.find({
-        tour: { $in: toursWithGuide.map(t => t._id) },
+      const upcoming = await Booking.find({
+        tour: { $in: tours.map(t => t._id) },
         startDate: { $gte: now },
         status: { $ne: 'Cancelled' }
       });
 
-      if (upcomingBookings.length > 0) {
-        // Mark as inactive instead of deleting
+      if (upcoming.length > 0) {
         guide.status = 'inactive';
         await guide.save();
-        return res.json({ 
-          message: 'Hướng dẫn viên đã bị ngừng hoạt động',
-          guide 
+
+        return res.json({
+          message: 'Hướng dẫn viên có tour sắp diễn ra — chuyển sang trạng thái inactive.',
+          data: guide
         });
-      } else {
-        // No upcoming bookings, can delete but first remove from tours
-        await Tour.updateMany(
-          { guide: guide._id },
-          { $unset: { guide: 1 } }
-        );
-        await Guide.deleteOne({ _id: id });
-        return res.json({ message: 'Xoá thành công.' });
       }
-    } else {
-      // Guide not assigned to any tour, can delete
-      await Guide.deleteOne({ _id: id });
-      return res.json({ message: 'Xoá thành công.' });
+
+      // No upcoming bookings → unassign and delete
+      await Tour.updateMany({ guide: id }, { $unset: { guide: 1 } });
     }
-  } catch (error) {
-    console.error('Delete guide error:', error);
-    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+
+    await Guide.deleteOne({ _id: id });
+
+    res.json({ message: 'Xoá hướng dẫn viên thành công.' });
+  } catch (err) {
+    next(err);
   }
 };
 
 // List guides (Admin)
-exports.listGuides = async (req, res) => {
+exports.listGuides = async (req, res, next) => {
   try {
     const {
       page = 1,
@@ -217,136 +199,103 @@ exports.listGuides = async (req, res) => {
 
     const filter = {};
 
-    if (status) {
-      filter.status = status;
-    }
-
-    if (language) {
-      filter.languages = { $in: [language] };
-    }
-
-    if (minExperience !== undefined) {
-      filter.experience = { $gte: Number(minExperience) };
-    }
-
-    if (q) {
-      filter.name = new RegExp(q, 'i');
-    }
+    if (status) filter.status = status;
+    if (language) filter.languages = { $in: [language] };
+    if (minExperience) filter.experience = { $gte: Number(minExperience) };
+    if (q) filter.name = new RegExp(q, 'i');
 
     const total = await Guide.countDocuments(filter);
-    
     const guides = await Guide.find(filter)
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit))
       .lean();
 
-    // Get tours count for each guide
-    const guidesWithToursCount = await Promise.all(
-      guides.map(async (guide) => {
-        const toursCount = await Tour.countDocuments({ guide: guide._id });
-        return {
-          ...guide,
-          toursCount
-        };
-      })
+    const data = await Promise.all(
+      guides.map(async g => ({
+        ...g,
+        toursCount: await Tour.countDocuments({ guide: g._id })
+      }))
     );
 
-    return res.json({
+    res.json({
       page: Number(page),
-      totalPages: Math.ceil(total / limit),
+      totalPages: Math.ceil(total / Number(limit)),
       total,
-      data: guidesWithToursCount
+      data
     });
-  } catch (error) {
-    console.error('List guides error:', error);
-    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+  } catch (err) {
+    next(err);
   }
 };
 
 // Get guide schedule (Admin)
-exports.getGuideSchedule = async (req, res) => {
+exports.getGuideSchedule = async (req, res, next) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.isValidObjectId(id))
       return res.status(400).json({ message: 'Guide ID không hợp lệ' });
-    }
 
     const guide = await Guide.findById(id);
     if (!guide) {
-      return res.status(404).json({ message: 'Hướng dẫn viên không tồn tại' });
+      return res.status(404).json({ message: 'Không tìm thấy hướng dẫn viên' });
     }
 
     // Get assigned tours to show conflicts
-    const assignedTours = await Tour.find({ guide: guide._id })
+    const assignedTours = await Tour.find({ guide: id })
       .select('_id name')
       .lean();
 
     return res.json({
       schedule: guide.schedule || [],
-      assignedTours: assignedTours
+      assignedTours
     });
   } catch (error) {
-    console.error('Get guide schedule error:', error);
-    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+    next(err);
   }
 };
 
 // Update guide schedule (Admin)
-exports.updateGuideSchedule = async (req, res) => {
+exports.updateGuideSchedule = async (req, res, next) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+
+    if (!mongoose.isValidObjectId(id))
       return res.status(400).json({ message: 'Guide ID không hợp lệ' });
-    }
 
     const guide = await Guide.findById(id);
-    if (!guide) {
-      return res.status(404).json({ message: 'Hướng dẫn viên không tồn tại' });
-    }
+    if (!guide)
+      return res.status(404).json({ message: 'Không tìm thấy hướng dẫn viên' });
 
-    const { schedule } = req.body; // Array of { date, startTime, endTime, isAvailable }
+    const { schedule } = req.body;
 
-    if (!Array.isArray(schedule)) {
-      return res.status(400).json({ message: 'Schedule phải là một mảng' });
-    }
+    if (!Array.isArray(schedule))
+      return res.status(400).json({ message: 'Schedule phải là mảng' });
 
-    // Validate schedule slots
-    for (const slot of schedule) {
-      if (!slot.date) {
-        return res.status(400).json({ message: 'Mỗi slot phải có date' });
-      }
-    }
+    schedule.forEach(s => {
+      if (!s.date)
+        throw new Error('Mỗi slot phải có date');
+    });
 
-    // Check for conflicts with assigned tours
-    const assignedTours = await Tour.find({ guide: guide._id })
-      .populate('guide')
-      .lean();
-
-    if (assignedTours.length > 0) {
-      // Get bookings for these tours
-      const tourIds = assignedTours.map(t => t._id);
+    // Validate conflict
+    const tours = await Tour.find({ guide: id });
+    if (tours.length > 0) {
       const bookings = await Booking.find({
-        tour: { $in: tourIds },
+        tour: { $in: tours.map(t => t._id) },
         status: { $ne: 'Cancelled' }
-      }).lean();
+      });
 
-      // Check if any new schedule slot conflicts with existing bookings
       for (const slot of schedule) {
-        if (slot.isAvailable === false) continue; // Skip unavailable slots
+        if (slot.isAvailable === false) continue;
 
-        const slotDate = new Date(slot.date);
-        slotDate.setHours(0, 0, 0, 0);
+        const slotDate = new Date(slot.date).setHours(0, 0, 0, 0);
 
-        for (const booking of bookings) {
-          const bookingDate = new Date(booking.startDate);
-          bookingDate.setHours(0, 0, 0, 0);
-
-          if (bookingDate.getTime() === slotDate.getTime()) {
-            return res.status(400).json({ 
-              message: `Không thể ghi lịch trùng với tour đã gán (ngày ${slotDate.toLocaleDateString('vi-VN')})` 
+        for (const b of bookings) {
+          const bDate = new Date(b.startDate).setHours(0, 0, 0, 0);
+          if (slotDate === bDate)
+            return res.status(400).json({
+              message: `Lịch trùng ngày có tour đã đặt (${new Date(slotDate).toLocaleDateString('vi-VN')})`
             });
-          }
         }
       }
     }
@@ -354,41 +303,66 @@ exports.updateGuideSchedule = async (req, res) => {
     guide.schedule = schedule;
     await guide.save();
 
-    return res.json({ 
-      message: 'Lịch trống được cập nhật thành công',
-      schedule: guide.schedule 
+    res.json({
+      message: 'Cập nhật lịch thành công.',
+      schedule: guide.schedule
     });
-  } catch (error) {
-    console.error('Update guide schedule error:', error);
-    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+  } catch (err) {
+    next(err);
   }
 };
 
 // Get single guide (for public/display)
-exports.getGuide = async (req, res) => {
+exports.getGuide = async (req, res, next) => {
   try {
     const { id } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+
+    if (!mongoose.isValidObjectId(id))
       return res.status(400).json({ message: 'Guide ID không hợp lệ' });
-    }
 
     const guide = await Guide.findById(id).lean();
-    if (!guide || guide.status === 'inactive') {
+    if (!guide || guide.status === 'inactive')
       return res.status(404).json({ message: 'Hướng dẫn viên không tồn tại' });
-    }
 
-    // Get tours count
-    const toursCount = await Tour.countDocuments({ guide: guide._id });
+    const toursCount = await Tour.countDocuments({ guide: id });
 
-    return res.json({
+    res.json({
       guide: {
         ...guide,
         toursCount
       }
     });
-  } catch (error) {
-    console.error('Get guide error:', error);
-    return res.status(500).json({ message: 'Lỗi server', error: error.message });
+  } catch (err) {
+    next(err);
   }
 };
 
+// Public List Guides
+exports.getPublicGuides = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 12, language } = req.query;
+    const filter = { status: 'active' };
+
+    if (language) filter.languages = { $in: [language] };
+
+    const total = await Guide.countDocuments(filter);
+    const guides = await Guide.find(filter)
+      .select('-phone -email -schedule') // Hide private info
+      .sort({ experience: -1 }) // Show experienced guides first
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit))
+      .lean();
+
+    res.json({
+      data: guides,
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total,
+        totalPages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (err) {
+    next(err);
+  }
+};

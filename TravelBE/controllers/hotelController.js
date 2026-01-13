@@ -1,104 +1,160 @@
+const slugify = require('slugify');
 const Hotel = require('../models/Hotel');
 const Tour = require('../models/Tour');
 
 // Create Hotel (Amdin)
 exports.createHotel = async (req, res, next) => {
-    try {
-        const { name, address, amenities, pricePerNight, stars} = req.body;
+  try {
+    const { name, address, amenities, pricePerNight, stars } = req.body;
 
-        if (!name || !address) return res.status(400).json({ message: 'Tên và địa chỉ bắt buộc' });
-
-        const exist = await Hotel.findOne({ name });
-        if (exist) return res.status(400).json({ message: 'Tên khách sạn đã tồn tại' });
-
-        const images = [];
-        if (req.files && req.files.length) req.files.forEach(f => images.push(`/uploads/hotels/${f.filename}`));
-        if(images.length === 0) return res.status(400).json({ message: 'Cần ít nhất 1 ảnh minh họa' });
-
-        if (Number(pricePerNight) < 0) return res.status(400).json({ message: 'Giá phòng không hợp lệ' });
-
-        const hotel = await Hotel.create({
-            name,
-            slug: slugify(name, { lower: true }),
-            address,
-            amenities: typeof amenities === 'string' ? JSON.parse(amenities) : (amenities || []),
-            pricePerNight: Number(pricePerNight || 0),
-            images,
-            stars: Number(stars || 3)
-        });
-
-        res.status(201).json({ message: 'Khách sạn đã được thêm thành công', hotelId: hotel._id, hotel });
+    if (!name || !address) {
+      return res.status(400).json({ message: 'Tên và địa chỉ là bắt buộc' });
     }
-    catch (err) {
-        next(err);
+
+    const exist = await Hotel.findOne({ name });
+    if (exist) return res.status(400).json({ message: 'Tên khách sạn đã tồn tại' });
+
+    // Validate price
+    if (pricePerNight !== undefined && Number(pricePerNight) < 0) {
+      return res.status(400).json({ message: 'Giá phòng không hợp lệ' });
     }
-}
+
+    // Validate images
+    let images = [];
+    if (req.files?.length > 0) {
+      images = req.files.map(f => `/uploads/hotels/${f.filename}`);
+    }
+    if (images.length === 0) {
+      return res.status(400).json({ message: 'Cần ít nhất 1 ảnh minh họa' });
+    }
+
+    const hotel = await Hotel.create({
+      name,
+      slug: slugify(name, { lower: true }),
+      address,
+      amenities: typeof amenities === 'string' ? JSON.parse(amenities) : (amenities || []),
+      pricePerNight: Number(pricePerNight || 0),
+      images,
+      stars: Number(stars || 3)
+    });
+
+    return res.status(201).json({
+      message: 'Khách sạn đã được thêm thành công',
+      hotelId: hotel._id,
+      hotel
+    });
+
+  } catch (err) {
+    console.error('Create hotel error:', err);
+    next(err);
+  }
+};
 
 // Upload Hotel (Admin)
 exports.updateHotel = async (req, res, next) => {
   try {
     const id = req.params.id;
-    const h = await Hotel.findById(id);
-    if (!h || h.status === 'deleted') return res.status(404).json({ message: 'Khách sạn không tồn tại' });
 
-    const { name, address, amenities, pricePerNight, stars } = req.body;
+    const hotel = await Hotel.findById(id);
+    if (!hotel || hotel.status === 'deleted') {
+      return res.status(404).json({ message: 'Khách sạn không tồn tại' });
+    }
 
-    if (name && name !== h.name) {
+    const { name, address, amenities, pricePerNight, stars, description } = req.body;
+
+    // Validate duplicate name
+    if (name && name !== hotel.name) {
       const dup = await Hotel.findOne({ name, _id: { $ne: id } });
-      if (dup) return res.status(400).json({ message: 'Tên khách sạn trùng với khách sạn khác' });
-      h.name = name;
-      h.slug = slugify(name, { lower: true });
+      if (dup) return res.status(400).json({ message: 'Tên khách sạn đã tồn tại' });
+
+      hotel.name = name;
+      hotel.slug = slugify(name, { lower: true });
     }
 
-    // If hotel is attached to any ongoing tour, restrict certain updates
-    const toursUsing = await Tour.find({ 'hotels.hotel': h._id, status: 'active' }).limit(1);
-    const isAttachedActive = toursUsing && toursUsing.length > 0;
+    // Check if hotel is attached to active tours
+    const attachedActiveTours = await Tour.findOne({ 'hotels.hotel': hotel._id, status: 'active' });
+    const isLocked = attachedActiveTours ? true : false;
 
-    if (address && !isAttachedActive) h.address = address;
-    else if (address && isAttachedActive) {
-      // restrict address change
-      // you may still allow update of some fields: leave as is or set flag
+    // Address cannot change if hotel is in active tour
+    if (address) {
+      if (isLocked) {
+        return res.status(400).json({ message: 'Không thể thay đổi địa chỉ khi khách sạn đang được sử dụng trong tour đang diễn ra' });
+      }
+      hotel.address = address;
     }
 
-    if (typeof amenities !== 'undefined') h.amenities = typeof amenities === 'string' ? JSON.parse(amenities) : amenities;
-    if (typeof pricePerNight !== 'undefined') {
-      if (Number(pricePerNight) < 0) return res.status(400).json({ message: 'Giá phòng không hợp lệ' });
-      h.pricePerNight = Number(pricePerNight);
-    }
-    if (typeof stars !== 'undefined') h.stars = Number(stars);
-
-    // images: merge uploaded images
-    if (req.files && req.files.length) {
-      const imgs = req.files.map(f => `/uploads/hotels/${f.filename}`);
-      h.images = h.images.concat(imgs);
+    // Amenities
+    if (amenities !== undefined) {
+      try {
+        hotel.amenities = typeof amenities === 'string' ? JSON.parse(amenities) : amenities;
+      } catch (jsonErr) {
+        return res.status(400).json({ message: 'Dữ liệu tiện ích (amenities) không đúng định dạng JSON' });
+      }
     }
 
-    await h.save();
-    res.json({ message: 'Cập nhật thông tin khách sạn thành công', hotel: h });
+    // Price validation
+    if (pricePerNight !== undefined) {
+      if (Number(pricePerNight) < 0) {
+        return res.status(400).json({ message: 'Giá phòng không hợp lệ' });
+      }
+      hotel.pricePerNight = Number(pricePerNight);
+    }
+
+    // Stars
+    if (stars !== undefined) {
+      const numStars = Number(stars);
+      if (numStars < 1 || numStars > 5) {
+        return res.status(400).json({ message: 'Số sao phải từ 1–5' });
+      }
+      hotel.stars = numStars;
+    }
+
+    if (description !== undefined) {
+      hotel.description = description;
+    }
+
+    // Merge new uploaded images
+    if (req.files?.length > 0) {
+      const uploadedImages = req.files.map(f => `/uploads/hotels/${f.filename}`);
+      hotel.images = [...hotel.images, ...uploadedImages];
+    }
+
+    await hotel.save();
+
+    return res.json({
+      message: 'Cập nhật thông tin khách sạn thành công',
+      hotel
+    });
+
   } catch (err) {
+    console.error('Update hotel error:', err);
     next(err);
   }
 };
+
 
 // Delete Hotel (Admin) - soft delete or full delete depending on attachment
 exports.deleteHotel = async (req, res, next) => {
   try {
     const id = req.params.id;
     const hotel = await Hotel.findById(id);
+
     if (!hotel) return res.status(404).json({ message: 'Khách sạn không tồn tại' });
 
-    // check if hotel is attached to active tours
-    const attached = await Tour.findOne({ 'hotels.hotel': hotel._id, status: 'active' });
-    if (attached) {
+    const isAttached = await Tour.findOne({ 'hotels.hotel': hotel._id, status: 'active' });
+
+    if (isAttached) {
       hotel.status = 'inactive';
       await hotel.save();
-      return res.json({ message: 'Khách sạn đang gắn với tour diễn ra. Đã chuyển sang trạng thái ngừng hoạt động.' });
+      return res.json({ message: 'Khách sạn đang gắn với tour. Đã chuyển sang trạng thái ngừng hoạt động.' });
     }
 
-    // not attached -> delete
     await Hotel.deleteOne({ _id: id });
+
     return res.json({ message: 'Khách sạn đã được xoá thành công.' });
+
   } catch (err) {
+    console.error('Delete hotel error:', err);
     next(err);
   }
 };
@@ -107,10 +163,14 @@ exports.deleteHotel = async (req, res, next) => {
 exports.listHotels = async (req, res, next) => {
   try {
     const { page = 1, limit = 10, minPrice, maxPrice, stars, status, sort } = req.query;
+
     const filter = {};
-    if (typeof status !== 'undefined') filter.status = status;
-    if (minPrice) filter.pricePerNight = { ...(filter.pricePerNight||{}), $gte: Number(minPrice) };
-    if (maxPrice) filter.pricePerNight = { ...(filter.pricePerNight||{}), $lte: Number(maxPrice) };
+
+    if (status) filter.status = status;
+
+    if (minPrice) filter.pricePerNight = { ...(filter.pricePerNight || {}), $gte: Number(minPrice) };
+    if (maxPrice) filter.pricePerNight = { ...(filter.pricePerNight || {}), $lte: Number(maxPrice) };
+
     if (stars) filter.stars = Number(stars);
 
     let query = Hotel.find(filter);
@@ -120,10 +180,20 @@ exports.listHotels = async (req, res, next) => {
     else if (sort === 'stars_desc') query = query.sort({ stars: -1 });
 
     const total = await Hotel.countDocuments(filter);
-    const data = await query.skip((page-1)*limit).limit(Number(limit)).lean();
+    const data = await query
+      .skip((page - 1) * limit)
+      .limit(Number(limit))
+      .lean();
 
-    res.json({ page: Number(page), totalPages: Math.ceil(total/limit), total, data });
+    return res.json({
+      page: Number(page),
+      totalPages: Math.ceil(total / limit),
+      total,
+      data
+    });
+
   } catch (err) {
+    console.error('List hotel error:', err);
     next(err);
   }
 };
@@ -132,10 +202,16 @@ exports.listHotels = async (req, res, next) => {
 exports.getHotel = async (req, res, next) => {
   try {
     const id = req.params.id;
+
     const hotel = await Hotel.findById(id);
-    if (!hotel || hotel.status === 'deleted') return res.status(404).json({ message: 'Khách sạn không tồn tại' });
-    res.json({ hotel });
+    if (!hotel || hotel.status === 'deleted') {
+      return res.status(404).json({ message: 'Khách sạn không tồn tại' });
+    }
+
+    return res.json({ hotel });
+
   } catch (err) {
+    console.error('Get hotel detail error:', err);
     next(err);
   }
 };

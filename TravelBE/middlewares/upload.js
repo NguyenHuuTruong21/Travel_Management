@@ -2,30 +2,48 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+// Tạo thư mục uploads nếu chưa có
 const uploadsDir = path.join(__dirname, '..', 'uploads', 'tours');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
 
+// Cấu hình lưu file
 const storage = multer.diskStorage({
-  destination: function(req, file, cb) {
+  destination: function (req, file, cb) {
     cb(null, uploadsDir);
   },
-  filename: function(req, file, cb) {
+  filename: function (req, file, cb) {
     const ext = path.extname(file.originalname);
-    const name = `${Date.now()}-${Math.round(Math.random()*1e9)}${ext}`;
-    cb(null, name);
+    const safeExt = ext.toLowerCase();
+
+    // Tránh trường hợp file không có extension hoặc extension lạ
+    const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}${safeExt}`;
+
+    cb(null, filename);
   }
 });
 
+// Filter file upload
 const fileFilter = (req, file, cb) => {
-  const allowed = /jpeg|jpg|png/;
+  const allowed = /\.(jpeg|jpg|png)$/i;
   const ext = path.extname(file.originalname).toLowerCase();
-  cb(null, allowed.test(ext));
+
+  if (!allowed.test(ext)) {
+    return cb(new Error('Invalid file type. Only JPEG, JPG, PNG allowed'), false);
+  }
+
+  cb(null, true);
 };
 
+// Cấu hình multer
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 } // 5MB
+  limits: {
+    fileSize: 5 * 1024 * 1024 // Giới hạn 5MB
+  }
 });
 
+// Xuất module
 module.exports = upload;
