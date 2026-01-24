@@ -200,5 +200,3 @@ Sử dụng **Socket.io** để đẩy thông báo thời gian thực.
 - Chạy: `npm run dev` (Vite - Port 3000)
 - Env: `VITE_API_URL` (Mặc định: http://localhost:5000/api)
 
-
-Name: Nguyễn Hữu Trường
