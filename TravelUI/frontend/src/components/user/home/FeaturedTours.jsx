@@ -11,7 +11,7 @@ const FeaturedTours = () => {
         const fetchTours = async () => {
             try {
                 // Fetch tours from backend (adjust endpoint as needed)
-                const response = await axios.get('http://localhost:5000/api/tours?limit=4');
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/tours?limit=4`);
                 setTours(response.data.data || []);
             } catch (error) {
                 console.error('Error fetching tours:', error);
@@ -52,7 +52,7 @@ const FeaturedTours = () => {
                             <div className="relative h-48 overflow-hidden">
                                 <img
                                     src={tour.images?.[0]
-                                        ? (tour.images[0].startsWith('http') ? tour.images[0] : `http://localhost:5000${tour.images[0].startsWith('/') ? '' : '/'}${tour.images[0].replace(/\\/g, '/')}`)
+                                        ? (tour.images[0].startsWith('http') ? tour.images[0] : `${import.meta.env.VITE_API_URL}${tour.images[0].startsWith('/') ? '' : '/'}${tour.images[0].replace(/\\/g, '/')}`)
                                         : 'https://via.placeholder.com/400x300'}
                                     alt={tour.name}
                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"

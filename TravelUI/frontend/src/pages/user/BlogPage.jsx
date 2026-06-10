@@ -10,7 +10,7 @@ const BlogPage = () => {
     useEffect(() => {
         const fetchPosts = async () => {
             try {
-                const response = await axios.get('http://localhost:5000/api/posts');
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/blogs`);
                 // Ensure we handle different potential response structures
                 const fetchedPosts = response.data.data || response.data.posts || response.data || [];
                 setPosts(fetchedPosts.filter(post => post.isPublished !== false));
@@ -55,10 +55,7 @@ const BlogPage = () => {
                                             <img
                                                 src={
                                                     post.image
-                                                        ? (post.image.trim().startsWith("http")
-                                                            ? post.image.trim()
-                                                            : `http://localhost:5000${post.image.trim().startsWith("/") ? "" : "/"}${post.image.trim().replace(/\\/g, "/")}`
-                                                        )
+                                                        ? (post.image.startsWith('http') ? post.image : `${import.meta.env.VITE_API_URL}${post.image.startsWith('/') ? '' : '/'}${post.image.replace(/\\/g, '/')}`)
                                                         : "https://via.placeholder.com/400x300?text=No+Image"
                                                 }
                                                 alt={post.title}

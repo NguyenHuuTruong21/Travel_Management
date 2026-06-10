@@ -9,6 +9,7 @@ const bookingRoutes = require('./routes/bookings');
 const errorHandler = require("./middlewares/errorHandler");
 const createSocket = require('./config/socket');
 const notification = require('./utils/notification');
+const { scheduleReminderJob } = require('./utils/reminderService');
 
 const app = express();
 
@@ -58,6 +59,14 @@ app.use('/api/promotions', promotionRoutes);
 const contactRoutes = require('./routes/contact');
 app.use('/api/contacts', contactRoutes);
 
+const paymentRoutes = require('./routes/paymentRoutes');
+app.use('/api/payments', paymentRoutes);
+
+const voucherRoutes = require('./routes/vouchers');
+app.use('/api/vouchers', voucherRoutes);
+
+const statsRoutes = require('./routes/stats');
+app.use('/api/stats', statsRoutes);
 
 // static uploads
 const path = require('path');
@@ -71,8 +80,12 @@ app.use(errorHandler);
 const server = http.createServer(app);
 const io = createSocket(server);
 
-// iinit notification util with io
+// init notification util with io
 notification.init(io);
+
+// ─── Khởi động Cron Job nhắc nhở lịch trình ───
+// Chạy mỗi ngày lúc 08:00 sáng (Asia/Ho_Chi_Minh)
+scheduleReminderJob();
 
 // socket connection - optional: log and allow join
 io.on('connection', (socket) => {

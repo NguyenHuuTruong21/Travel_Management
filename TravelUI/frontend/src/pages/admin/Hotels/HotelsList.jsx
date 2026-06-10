@@ -95,7 +95,7 @@ const HotelsList = () => {
                                                     <img
                                                         src={hotel.images[0].startsWith('http')
                                                             ? hotel.images[0]
-                                                            : `http://localhost:5000${hotel.images[0].startsWith('/') ? '' : '/'}${hotel.images[0].replace(/\\/g, '/')}`}
+                                                            : `${import.meta.env.VITE_API_URL}${hotel.images[0].startsWith('/') ? '' : '/'}${hotel.images[0].replace(/\\/g, '/')}`}
                                                         alt={hotel.name}
                                                         className="h-12 w-12 rounded-lg object-cover mr-3"
                                                     />

@@ -9,7 +9,7 @@ const VehicleInfo = ({ vehicle }) => {
 
     const imageUrl = vehicle.image?.startsWith('http')
         ? vehicle.image
-        : `http://localhost:5000${vehicle.image?.startsWith('/') ? '' : '/'}${vehicle.image?.replace(/\\/g, '/')}`;
+        : `${import.meta.env.VITE_API_URL}${vehicle.image?.startsWith('/') ? '' : '/'}${vehicle.image?.replace(/\\/g, '/')}`;
 
     const getStatusBadge = (status) => {
         const statusConfig = {

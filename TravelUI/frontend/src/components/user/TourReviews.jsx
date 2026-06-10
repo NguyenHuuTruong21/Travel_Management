@@ -24,7 +24,7 @@ const TourReviews = ({ tourId }) => {
     const fetchUserProfile = async () => {
         try {
             const token = localStorage.getItem('accessToken');
-            const response = await axios.get('http://localhost:5000/api/auth/profile', {
+            const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/auth/profile`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setUser(response.data.user);
@@ -35,7 +35,7 @@ const TourReviews = ({ tourId }) => {
 
     const fetchReviews = async () => {
         try {
-            const response = await axios.get(`http://localhost:5000/api/reviews/tour/${tourId}`);
+            const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/reviews/tour/${tourId}`);
             setReviews(response.data.data || []);
         } catch (error) {
             console.error('Error fetching reviews:', error);
@@ -55,7 +55,7 @@ const TourReviews = ({ tourId }) => {
         setSubmitting(true);
         try {
             const token = localStorage.getItem('accessToken');
-            await axios.post('http://localhost:5000/api/reviews',
+            await axios.post(`${import.meta.env.VITE_API_URL}/api/reviews`,
                 {
                     tourId,
                     rating: formData.rating,
@@ -187,7 +187,7 @@ const TourReviews = ({ tourId }) => {
                                                 {review.images.map((img, idx) => (
                                                     <img
                                                         key={idx}
-                                                        src={img.startsWith('http') ? img : `http://localhost:5000${img}`}
+                                                        src={img.startsWith('http') ? img : `${import.meta.env.VITE_API_URL}${img.startsWith('/') ? '' : '/'}${img}`}
                                                         alt={`Review ${idx + 1}`}
                                                         className="w-20 h-20 object-cover rounded-lg"
                                                     />

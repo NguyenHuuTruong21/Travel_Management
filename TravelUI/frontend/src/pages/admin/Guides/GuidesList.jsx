@@ -73,7 +73,7 @@ const GuidesList = () => {
                                         <td className="px-6 py-4">
                                             <div className="flex items-center">
                                                 {guide.avatar && (
-                                                    <img src={`http://localhost:5000${guide.avatar}`} alt={guide.name} className="h-10 w-10 rounded-full object-cover mr-3" />
+                                                    <img src={`${import.meta.env.VITE_API_URL}${guide.avatar}`} alt={guide.name} className="h-10 w-10 rounded-full object-cover mr-3" />
                                                 )}
                                                 <div>
                                                     <div className="text-sm font-medium text-gray-900">{guide.name}</div>

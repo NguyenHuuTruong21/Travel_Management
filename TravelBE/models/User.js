@@ -84,7 +84,24 @@ const UserSchema = new mongoose.Schema(
         token: { type: String, required: true },
         createdAt: { type: Date, default: Date.now }
       }
-    ]
+    ],
+
+    // ─── LOYALTY / VOUCHER SYSTEM ────────────────────────────────────
+    // Tổng số booking đã hoàn thành (dùng để tính nhóm KH)
+    totalBookings: { type: Number, default: 0, min: 0 },
+
+    // Tổng số tiền đã chi (dùng để xét VIP)
+    totalSpent: { type: Number, default: 0, min: 0 },
+
+    // Nhóm khách hàng: tự động cập nhật sau mỗi booking
+    // NEW_USER: chưa có booking nào
+    // NORMAL: có booking nhưng chưa đủ VIP
+    // VIP: totalSpent >= 10,000,000 VND hoặc totalBookings >= 5
+    group: {
+      type: String,
+      enum: ['NEW_USER', 'NORMAL', 'VIP'],
+      default: 'NEW_USER'
+    }
   },
   { timestamps: true }
 );

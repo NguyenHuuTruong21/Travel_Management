@@ -3,16 +3,19 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { AuthContext } from '../../contexts/AuthContext';
 import { FiCalendar, FiMapPin, FiUsers, FiCreditCard, FiCheckCircle } from 'react-icons/fi';
+import VoucherInput from '../../components/Payment/VoucherInput';
 
 const BookingPage = () => {
     const { id } = useParams();
     const navigate = useNavigate();
     const { user } = useContext(AuthContext);
+
     const [tour, setTour] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [step, setStep] = useState(1); // 1: Info, 2: Payment, 3: Success
+    const [step, setStep] = useState(1); // 1: Thông tin, 2: Thanh toán, 3: Success
 
-    // Form state
+    const [bookingId, setBookingId] = useState(null); // Lưu ID booking sau khi tạo
+
     const [bookingData, setBookingData] = useState({
         participants: 1,
         startDate: '',
@@ -20,17 +23,22 @@ const BookingPage = () => {
         email: user?.email || '',
         phone: '',
         note: '',
-        paymentMethod: 'credit_card'
+        promotionCode: '',
+        discountAmount: 0,
+        selectedPaymentMethod: 'VNPAY'
     });
+
+    // State quản lý voucher
+    const [appliedVoucher, setAppliedVoucher] = useState(null);
+    const [paymentLoading, setPaymentLoading] = useState(false);
 
     useEffect(() => {
         const fetchTour = async () => {
             try {
-                const response = await axios.get(`http://localhost:5000/api/tours/${id}`);
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/tours/${id}`);
                 setTour(response.data.tour);
             } catch (error) {
                 console.error('Error fetching tour:', error);
-                // navigate('/tours');
             } finally {
                 setLoading(false);
             }
@@ -43,53 +51,99 @@ const BookingPage = () => {
         setBookingData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = async (e) => {
+    // Step 1: Tạo Booking (Pending)
+    const handleCreateBooking = async (e) => {
         e.preventDefault();
-
-        if (step === 1) {
-            if (!bookingData.startDate) {
-                alert('Vui lòng chọn ngày khởi hành');
-                return;
-            }
-            setStep(2);
+        if (!bookingData.startDate) {
+            alert('Vui lòng chọn ngày khởi hành');
+            return;
+        }
+        if (!user) {
+            alert('Vui lòng đăng nhập để đặt tour');
             return;
         }
 
-        // Final Submit
         try {
             const token = localStorage.getItem('accessToken');
-            const config = {
-                headers: { Authorization: `Bearer ${token}` }
-            };
+            const config = { headers: { Authorization: `Bearer ${token}` } };
 
-            const paymentMethodMap = {
-                'credit_card': 'credit_card',
-                'bank_transfer': 'banking',
-                'cash': 'none'
-            };
-
-            await axios.post('http://localhost:5000/api/bookings', {
+            const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/bookings`, {
+                type: 'tour',
                 tourId: id,
                 quantity: bookingData.participants,
                 startDate: bookingData.startDate,
                 specialRequest: bookingData.note,
-                paymentMethod: paymentMethodMap[bookingData.paymentMethod],
-                promotionCode: bookingData.promotionCode // Add promotion code
-                // vehicle and guide are optional and not in this form
+                promotionCode: bookingData.promotionCode || undefined
             }, config);
 
-            // Success
-            setStep(3);
+            setBookingId(res.data.bookingId);
+            setStep(2);
         } catch (error) {
-            console.error('Booking error:', error);
-            alert(error.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại.');
+            console.error('Create booking error:', error);
+            alert(error.response?.data?.message || 'Có lỗi khi tạo đơn đặt tour');
         }
     };
 
-    if (loading) return <div className="text-center py-20">Loading...</div>;
-    if (!tour) return <div className="text-center py-20">Tour not found</div>;
+    const handlePayment = async () => {
+        if (!bookingId) return alert('Không tìm thấy đơn đặt');
+        setPaymentLoading(true);
+        try {
+            const token = localStorage.getItem('accessToken');
+            const config = { headers: { Authorization: `Bearer ${token}` } };
 
-    const totalPrice = tour.price * bookingData.participants;
+            const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/payments/create`, {
+                orderId: bookingId,
+                orderType: 'TOUR',
+                couponCode: appliedVoucher?.code || undefined,
+                paymentMethod: bookingData.selectedPaymentMethod
+            }, config);
+
+            if (res.data.paymentUrl) {
+                // Chuyển sang trang giả lập thanh toán
+                window.location.href = res.data.paymentUrl;
+            } else {
+                alert('Không nhận được link thanh toán');
+            }
+        } catch (error) {
+            console.error('Payment error:', error);
+            alert(error.response?.data?.message || 'Lỗi khi tạo link thanh toán');
+        } finally {
+            setPaymentLoading(false);
+        }
+    };
+
+    // Áp dụng mã giảm giá (giữ nguyên logic cũ của bạn)
+    const applyPromotion = async () => {
+        const code = document.getElementById('promo-input').value.trim();
+        if (!code) return alert('Vui lòng nhập mã giảm giá');
+
+        try {
+            const res = await axios.post(`${import.meta.env.VITE_API_URL}/api/promotions/check`, {
+                code,
+                tourId: id,
+                totalAmount: tour.price * bookingData.participants
+            });
+
+            if (res.data.valid) {
+                alert(`Áp dụng thành công! Giảm ${new Intl.NumberFormat('vi-VN').format(res.data.discountAmount)} đ`);
+                setBookingData(prev => ({
+                    ...prev,
+                    promotionCode: res.data.code,
+                    discountAmount: res.data.discountAmount
+                }));
+            }
+        } catch (err) {
+            alert(err.response?.data?.message || 'Mã giảm giá không hợp lệ');
+        }
+    };
+
+    if (loading) return <div className="text-center py-20">Đang tải...</div>;
+    if (!tour) return <div className="text-center py-20">Không tìm thấy tour</div>;
+
+    const originalPrice = tour.price * bookingData.participants;
+    const discount = appliedVoucher?.discountAmount || 0;
+    const finalPrice = Math.max(0, originalPrice - discount);
+    const fmt = (n) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
 
     return (
         <div className="min-h-screen bg-gray-50 py-12">
@@ -113,202 +167,180 @@ const BookingPage = () => {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                    {/* Booking Form */}
+                    {/* Left Form */}
                     <div className="lg:col-span-2">
                         {step === 1 && (
                             <div className="bg-white rounded-2xl shadow-sm p-8">
                                 <h2 className="text-2xl font-bold mb-6">Thông tin đặt tour</h2>
-                                <form id="booking-form" onSubmit={handleSubmit}>
+                                <form onSubmit={handleCreateBooking}>
+                                    {/* Các trường thông tin giống cũ */}
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Họ và tên</label>
-                                            <input required type="text" name="fullName" value={bookingData.fullName} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" />
+                                            <input type="text" name="fullName" value={bookingData.fullName} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" required />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                                            <input required type="email" name="email" value={bookingData.email} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" />
+                                            <input type="email" name="email" value={bookingData.email} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" required />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Số điện thoại</label>
-                                            <input required type="tel" name="phone" value={bookingData.phone} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" />
+                                            <input type="tel" name="phone" value={bookingData.phone} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" required />
                                         </div>
                                         <div>
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Số lượng khách</label>
-                                            <input required type="number" min="1" max={tour.maxGroupSize} name="participants" value={bookingData.participants} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" />
+                                            <input type="number" min="1" name="participants" value={bookingData.participants} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" required />
                                         </div>
                                         <div className="md:col-span-2">
                                             <label className="block text-sm font-medium text-gray-700 mb-2">Ngày khởi hành</label>
-                                            <input
-                                                required
-                                                type="date"
-                                                name="startDate"
-                                                value={bookingData.startDate}
-                                                onChange={handleChange}
-                                                min={new Date().toISOString().split('T')[0]}
-                                                className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500"
-                                            />
+                                            <input type="date" name="startDate" value={bookingData.startDate} onChange={handleChange} min={new Date().toISOString().split('T')[0]} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500" required />
                                         </div>
                                     </div>
+
                                     <div className="mb-6">
                                         <label className="block text-sm font-medium text-gray-700 mb-2">Ghi chú thêm</label>
-                                        <textarea rows="3" name="note" value={bookingData.note} onChange={handleChange} className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500"></textarea>
+                                        <textarea name="note" value={bookingData.note} onChange={handleChange} rows="3" className="w-full px-4 py-3 rounded-lg border border-gray-200 focus:ring-2 focus:ring-blue-500"></textarea>
                                     </div>
-                                    {!user && (
-                                        <div className="mb-6 bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                                            <p className="text-sm text-yellow-800">
-                                                Bạn chưa đăng nhập. Vui lòng <a href="/login" className="font-bold underline">đăng nhập</a> để đặt tour.
-                                            </p>
-                                        </div>
-                                    )}
-                                    <button
-                                        type="submit"
-                                        disabled={!user}
-                                        className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Tiếp tục thanh toán
+
+                                    <button type="submit" className="w-full py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors">
+                                        Tiếp tục đến thanh toán
                                     </button>
                                 </form>
                             </div>
                         )}
 
                         {step === 2 && (
-                            <div className="bg-white rounded-2xl shadow-sm p-8">
-                                <h2 className="text-2xl font-bold mb-6">Mã giảm giá</h2>
-                                <div className="flex gap-4 mb-8">
-                                    <input
-                                        type="text"
-                                        placeholder="Nhập mã giảm giá"
-                                        className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500"
-                                        id="promo-input"
+                            <div className="space-y-6">
+                                {/* Voucher Section */}
+                                <div className="bg-white rounded-2xl shadow-sm p-6">
+                                    <h2 className="text-xl font-bold mb-4">🎟️ Mã giảm giá</h2>
+                                    <VoucherInput
+                                        bookingType="tour"
+                                        amount={originalPrice}
+                                        tourId={id}
+                                        location={tour?.location}
+                                        onApplied={(result) => setAppliedVoucher(result)}
+                                        onRemoved={() => setAppliedVoucher(null)}
                                     />
-                                    <button
-                                        type="button"
-                                        onClick={async () => {
-                                            const code = document.getElementById('promo-input').value;
-                                            if (!code) return alert('Vui lòng nhập mã');
-                                            try {
-                                                const res = await axios.post('http://localhost:5000/api/promotions/check', {
-                                                    code,
-                                                    tourId: id,
-                                                    totalAmount: totalPrice
-                                                });
-                                                if (res.data.valid) {
-                                                    alert(`Áp dụng mã thành công! Giảm ${new Intl.NumberFormat('vi-VN').format(res.data.discountAmount)} đ`);
-                                                    setBookingData(prev => ({
-                                                        ...prev,
-                                                        promotionCode: res.data.code,
-                                                        discountAmount: res.data.discountAmount
-                                                    }));
-                                                }
-                                            } catch (err) {
-                                                alert(err.response?.data?.message || 'Mã không hợp lệ');
-                                                setBookingData(prev => ({ ...prev, promotionCode: '', discountAmount: 0 }));
-                                            }
-                                        }}
-                                        className="px-6 py-3 bg-gray-800 text-white font-bold rounded-xl hover:bg-gray-700"
-                                    >
-                                        Áp dụng
-                                    </button>
                                 </div>
 
-                                <h2 className="text-2xl font-bold mb-6">Chọn phương thức thanh toán</h2>
-                                <div className="space-y-4 mb-8">
-                                    <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-500 transition-colors">
-                                        <input type="radio" name="paymentMethod" value="credit_card" checked={bookingData.paymentMethod === 'credit_card'} onChange={handleChange} className="w-5 h-5 text-blue-600" />
-                                        <div className="ml-4 flex items-center gap-3">
-                                            <FiCreditCard className="text-xl text-gray-600" />
-                                            <span className="font-medium text-gray-900">Thẻ tín dụng / Ghi nợ quốc tế</span>
-                                        </div>
-                                    </label>
-                                    <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-500 transition-colors">
-                                        <input type="radio" name="paymentMethod" value="bank_transfer" checked={bookingData.paymentMethod === 'bank_transfer'} onChange={handleChange} className="w-5 h-5 text-blue-600" />
-                                        <div className="ml-4 flex items-center gap-3">
-                                            <span className="font-medium text-gray-900">Chuyển khoản ngân hàng (QR Code)</span>
-                                        </div>
-                                    </label>
-                                    <label className="flex items-center p-4 border border-gray-200 rounded-xl cursor-pointer hover:border-blue-500 transition-colors">
-                                        <input type="radio" name="paymentMethod" value="cash" checked={bookingData.paymentMethod === 'cash'} onChange={handleChange} className="w-5 h-5 text-blue-600" />
-                                        <div className="ml-4 flex items-center gap-3">
-                                            <span className="font-medium text-gray-900">Tiền mặt tại văn phòng</span>
-                                        </div>
-                                    </label>
+                                {/* Phương thức thanh toán */}
+                                <div className="bg-white rounded-2xl shadow-sm p-6">
+                                    <h2 className="text-xl font-bold mb-4">💳 Phương thức thanh toán</h2>
+                                    {/* 💳 Phương thức thanh toán */}
+                                    <div className="space-y-3">
+                                        {[
+                                            { value: 'VNPAY', label: 'VNPay (Thẻ ATM / QR Code)', icon: '🏦', color: 'blue' },
+                                            { value: 'MOMO', label: 'Ví MoMo', icon: '💜', color: 'pink' }
+                                        ].map(m => (
+                                            <label
+                                                key={m.value}
+                                                className={`flex items-center p-4 border-2 rounded-xl cursor-pointer transition-all ${
+                                                    bookingData.selectedPaymentMethod === m.value
+                                                        ? `border-${m.color}-500 bg-${m.color}-50`
+                                                        : 'border-gray-200 hover:border-gray-300'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="radio" name="paymentMethod" value={m.value}
+                                                    checked={bookingData.selectedPaymentMethod === m.value}
+                                                    onChange={e => setBookingData(prev => ({ ...prev, selectedPaymentMethod: e.target.value }))}
+                                                    className="w-4 h-4"
+                                                />
+                                                <span className="ml-3 text-2xl">{m.icon}</span>
+                                                <span className="ml-2 font-medium text-gray-700">{m.label}</span>
+                                            </label>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="flex gap-4">
-                                    <button onClick={() => setStep(1)} className="w-1/3 py-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors">
-                                        Quay lại
-                                    </button>
-                                    <button onClick={handleSubmit} className="w-2/3 py-4 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors shadow-lg">
-                                        Xác nhận thanh toán
-                                    </button>
+
+                                {/* Tóm tắt giá + nút */}
+                                <div className="bg-white rounded-2xl shadow-sm p-6">
+                                    <div className="space-y-2 mb-4">
+                                        <div className="flex justify-between text-sm text-gray-500">
+                                            <span>Giá gốc ({bookingData.participants} khách)</span>
+                                            <span>{fmt(originalPrice)}</span>
+                                        </div>
+                                        {discount > 0 && (
+                                            <div className="flex justify-between text-sm text-green-600 font-medium">
+                                                <span>🎟️ Giảm ({appliedVoucher?.code})</span>
+                                                <span>- {fmt(discount)}</span>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between font-bold text-lg pt-2 border-t border-dashed border-gray-200">
+                                            <span>Tổng thanh toán</span>
+                                            <span className="text-blue-600 text-2xl">{fmt(finalPrice)}</span>
+                                        </div>
+                                    </div>
+
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => setStep(1)}
+                                            className="w-1/3 py-3.5 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-colors"
+                                        >
+                                            ← Quay lại
+                                        </button>
+                                        <button
+                                            onClick={handlePayment}
+                                            disabled={paymentLoading}
+                                            className="w-2/3 py-3.5 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-xl hover:from-blue-700 hover:to-blue-800 shadow-lg shadow-blue-200 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                                        >
+                                            {paymentLoading
+                                                ? <><div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Đang xử lý...</>
+                                                : `Thanh toán ${fmt(finalPrice)}`
+                                            }
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}
 
                         {step === 3 && (
                             <div className="bg-white rounded-2xl shadow-sm p-12 text-center">
-                                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center text-green-600 mx-auto mb-6">
-                                    <FiCheckCircle size={40} />
-                                </div>
-                                <h2 className="text-3xl font-bold text-gray-900 mb-4">Đặt tour thành công!</h2>
-                                <p className="text-gray-600 mb-8 max-w-lg mx-auto">
-                                    Cảm ơn bạn đã tin tưởng dịch vụ của chúng tôi. Mã đơn hàng của bạn đã được gửi đến email <strong>{bookingData.email}</strong>. Nhân viên tư vấn sẽ liên hệ với bạn trong vòng 24h.
-                                </p>
-                                <button onClick={() => navigate('/')} className="px-8 py-3 bg-blue-600 text-white font-bold rounded-full hover:bg-blue-700 transition-colors">
-                                    Về trang chủ
-                                </button>
+                                <FiCheckCircle className="w-20 h-20 text-green-600 mx-auto mb-6" />
+                                <h2 className="text-3xl font-bold mb-4">Đặt tour thành công!</h2>
+                                <p className="text-gray-600 mb-8">Cảm ơn bạn! Chúng tôi đã gửi thông tin đơn hàng đến email của bạn.</p>
+                                <button onClick={() => navigate('/')} className="px-8 py-3 bg-blue-600 text-white font-bold rounded-full hover:bg-blue-700">Về trang chủ</button>
                             </div>
                         )}
                     </div>
 
-                    {/* Booking Summary - Sidebar */}
+                    {/* Sidebar tóm tắt */}
                     <div className="lg:col-span-1">
                         <div className="bg-white rounded-2xl shadow-sm p-6 sticky top-8">
-                            <h3 className="text-lg font-bold text-gray-900 mb-4">Tóm tắt đơn hàng</h3>
-
+                            <h3 className="text-lg font-bold mb-4">Tóm tắt đơn hàng</h3>
+                            {/* Giữ nguyên phần tóm tắt tour của bạn */}
                             <div className="flex gap-4 mb-4">
-                                <img src={tour.images?.[0]
-                                    ? (tour.images[0].startsWith('http') ? tour.images[0] : `http://localhost:5000${tour.images[0].startsWith('/') ? '' : '/'}${tour.images[0].replace(/\\/g, '/')}`)
-                                    : 'https://via.placeholder.com/200'}
-                                    alt={tour.name} className="w-20 h-20 rounded-lg object-cover" />
+                                <img 
+                                    src={tour.images?.[0]
+                                        ? (tour.images[0].startsWith('http') ? tour.images[0] : `${import.meta.env.VITE_API_URL}${tour.images[0].startsWith('/') ? '' : '/'}${tour.images[0].replace(/\\/g, '/')}`)
+                                        : 'https://via.placeholder.com/400x300'} 
+                                    alt={tour.name} 
+                                    className="w-20 h-20 rounded-lg object-cover" 
+                                />
                                 <div>
-                                    <h4 className="font-medium text-gray-900 line-clamp-2">{tour.name}</h4>
+                                    <h4 className="font-medium line-clamp-2">{tour.name}</h4>
                                 </div>
                             </div>
 
-                            <div className="space-y-3 border-t border-gray-100 pt-4 mb-4 text-sm text-gray-600">
-                                <div className="flex justify-between">
-                                    <span className="flex items-center gap-2"><FiCalendar /> Khởi hành:</span>
-                                    <span className="font-medium text-gray-900">{bookingData.startDate ? new Date(bookingData.startDate).toLocaleDateString('vi-VN') : 'Chưa chọn'}</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="flex items-center gap-2"><FiUsers /> Số khách:</span>
-                                    <span className="font-medium text-gray-900">{bookingData.participants} người</span>
-                                </div>
-                                <div className="flex justify-between">
-                                    <span className="flex items-center gap-2"><FiMapPin /> Nơi đi:</span>
-                                    <span className="font-medium text-gray-900">{tour.startLocation}</span>
-                                </div>
+                            <div className="space-y-3 border-t border-gray-100 pt-4 text-sm text-gray-600">
+                                <div className="flex justify-between"><span>Khởi hành:</span><span className="font-medium">{bookingData.startDate ? new Date(bookingData.startDate).toLocaleDateString('vi-VN') : 'Chưa chọn'}</span></div>
+                                <div className="flex justify-between"><span>Số khách:</span><span className="font-medium">{bookingData.participants} người</span></div>
                             </div>
 
                             <div className="border-t border-gray-100 pt-4">
-                                <div className="flex justify-between items-center mb-2">
-                                    <span className="text-gray-600">Đơn giá</span>
-                                    <span className="font-medium">{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tour.price)}</span>
-                                </div>
-                                <div className="flex justify-between items-center mb-4">
-                                    <span className="text-gray-600">Số lượng</span>
-                                    <span className="font-medium">x {bookingData.participants}</span>
-                                </div>
+                                <div className="flex justify-between mb-2"><span>Đơn giá</span><span>{new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(tour.price)}</span></div>
+                                <div className="flex justify-between mb-4"><span>Số lượng</span><span>x {bookingData.participants}</span></div>
                                 {bookingData.discountAmount > 0 && (
-                                    <div className="flex justify-between items-center mb-4 text-green-600">
-                                        <span className="">Giảm giá</span>
-                                        <span className="font-medium">- {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bookingData.discountAmount)}</span>
+                                    <div className="flex justify-between text-green-600 mb-4">
+                                        <span>Giảm giá</span>
+                                        <span>- {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(bookingData.discountAmount)}</span>
                                     </div>
                                 )}
-                                <div className="flex justify-between items-center border-t border-dashed border-gray-200 pt-4">
-                                    <span className="font-bold text-lg text-gray-900">Tổng cộng</span>
+                                <div className="flex justify-between border-t border-dashed pt-4">
+                                    <span className="font-bold text-lg">Tổng cộng</span>
                                     <span className="font-bold text-2xl text-blue-600">
-                                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Math.max(0, totalPrice - (bookingData.discountAmount || 0)))}
+                                        {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(finalPrice)}
                                     </span>
                                 </div>
                             </div>

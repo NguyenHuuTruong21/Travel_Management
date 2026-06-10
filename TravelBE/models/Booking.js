@@ -35,7 +35,7 @@ const BookingSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["tour", "hotel"],
+      enum: ["tour", "hotel", "car"],
       default: "tour",
       required: true
     },
@@ -70,14 +70,25 @@ const BookingSchema = new mongoose.Schema(
 
     paymentMethod: {
       type: String,
-      enum: ["credit_card", "banking", "none"],
+      enum: ["VNPay", "MoMo", "Cash", "none"],
       default: "none"
     },
 
     status: {
       type: String,
-      enum: ["Pending", "Confirmed", "Cancelled", "Completed"],
+      enum: ["Pending", "Processing", "Paid", "Failed", "Refunded", "Confirmed", "Cancelled", "Completed"],
       default: "Pending"
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ["Pending", "Paid", "Failed"],
+      default: "Pending"
+    },
+
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment"
     },
 
     totalPrice: {
@@ -86,6 +97,10 @@ const BookingSchema = new mongoose.Schema(
       min: [0, "Total price must be >= 0"]
     },
 
+    transactionId: String,           // Mã giao dịch từ gateway
+    paymentResponse: Object,         // Lưu response đầy đủ (JSON)
+    paidAt: Date,
+
     timeline: {
       type: [TimelineSchema],
       default: []
@@ -93,6 +108,22 @@ const BookingSchema = new mongoose.Schema(
 
     promotionCode: { type: String, trim: true },
     discountAmount: { type: Number, default: 0 },
+
+    // ========== REMINDER FIELDS ==========
+    // Cờ tổng quát: đã gửi ít nhất một reminder chưa
+    reminderSent: { type: Boolean, default: false },
+
+    // Log chi tiết từng lần nhắc: type '3days' hoặc '1day'
+    reminders: [
+      {
+        type: {
+          type: String,
+          enum: ['3days', '1day'],
+          required: true
+        },
+        sentAt: { type: Date, default: Date.now }
+      }
+    ],
 
     createdAt: { type: Date, default: Date.now }
   },

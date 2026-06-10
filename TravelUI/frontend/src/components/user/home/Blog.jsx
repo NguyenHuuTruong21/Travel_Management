@@ -9,7 +9,7 @@ const Blog = () => {
     useEffect(() => {
         const fetchPosts = async () => {
             try {
-                const response = await axios.get('http://localhost:5000/api/posts?limit=3');
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/blogs?limit=3`);
                 setPosts(response.data.data || []);
             } catch (error) {
                 console.error('Error fetching posts:', error);
@@ -47,7 +47,7 @@ const Blog = () => {
                                 <Link to={`/blog/${post._id}`}>
                                     <img
                                         src={post.image
-                                            ? (post.image.startsWith('http') ? post.image : `http://localhost:5000${post.image.startsWith('/') ? '' : '/'}${post.image.replace(/\\/g, '/')}`)
+                                            ? (post.image.startsWith('http') ? post.image : `${import.meta.env.VITE_API_URL}${post.image.startsWith('/') ? '' : '/'}${post.image.replace(/\\/g, '/')}`)
                                             : 'https://via.placeholder.com/600x400'}
                                         alt={post.title}
                                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"

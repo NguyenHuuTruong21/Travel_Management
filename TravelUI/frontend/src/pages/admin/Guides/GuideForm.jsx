@@ -47,7 +47,7 @@ const GuideForm = () => {
                 status: guide.status || 'active'
             });
             if (guide.avatar) {
-                setExistingAvatar(guide.avatar.startsWith('http') ? guide.avatar : `http://localhost:5000${guide.avatar}`);
+                setExistingAvatar(guide.avatar.startsWith('http') ? guide.avatar : `${import.meta.env.VITE_API_URL}${guide.avatar}`);
             }
         }
         setLoading(false);

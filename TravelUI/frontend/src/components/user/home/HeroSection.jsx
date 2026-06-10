@@ -14,7 +14,7 @@ const HeroSection = () => {
 
     const fetchBanners = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/banners');
+            const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/banners`);
             const activeBanners = (response.data.data || []).filter(b => b.isActive);
             setBanners(activeBanners.length > 0 ? activeBanners : [getDefaultBanner()]);
         } catch (error) {

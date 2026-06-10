@@ -24,14 +24,17 @@ const NotificationSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ['booking', 'promo', 'system', 'security', 'contact'],
+      enum: ['booking', 'promo', 'system', 'security', 'contact', 'reminder'],
       default: 'system'
     },
 
     metadata: {
       bookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
       tourId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tour' },
+      hotelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Hotel' },
       status: { type: String, trim: true },
+      // reminderType: '3days' hoặc '1day' – dùng cho reminder
+      reminderType: { type: String, enum: ['3days', '1day'] },
       extra: { type: mongoose.Schema.Types.Mixed }
     },
 

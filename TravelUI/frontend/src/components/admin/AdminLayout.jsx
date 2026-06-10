@@ -21,13 +21,14 @@ const AdminLayout = () => {
         { path: '/admin/bookings', icon: FiShoppingBag, label: 'Đặt tour' },
         { path: '/admin/reviews', icon: FiStar, label: 'Đánh giá' },
         { path: '/admin/contacts', icon: FiMessageSquare, label: 'Liên hệ' },
+        { path: '/admin/vouchers', icon: FiGift, label: 'Vouchers' },
         {
             label: 'CMS',
             isGroup: true,
             items: [
                 { path: '/admin/banners', icon: FiImage, label: 'Banners' },
                 { path: '/admin/posts', icon: FiFileText, label: 'Bài viết' },
-                { path: '/admin/promotions', icon: FiGift, label: 'Khuyến mãi' },
+                { path: '/admin/promotions', icon: FiGift, label: 'Khuyến mãi cũ' },
             ]
         },
         {

@@ -94,7 +94,7 @@ const ToursList = () => {
                                             <div className="flex items-center">
                                                 {tour.images?.[0] && (
                                                     <img
-                                                        src={`http://localhost:5000${tour.images[0]}`}
+                                                        src={`${import.meta.env.VITE_API_URL}${tour.images[0]}`}
                                                         alt={tour.name}
                                                         className="h-12 w-12 rounded-lg object-cover mr-3"
                                                     />

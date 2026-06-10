@@ -27,7 +27,7 @@ const HotelBookingPage = () => {
     useEffect(() => {
         const fetchHotel = async () => {
             try {
-                const response = await axios.get(`http://localhost:5000/api/hotels/${id}`);
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/hotels/${id}`);
                 setHotel(response.data.hotel || response.data.data || response.data);
             } catch (error) {
                 console.error('Error fetching hotel:', error);
@@ -78,7 +78,7 @@ const HotelBookingPage = () => {
             };
 
             const response = await axios.post(
-                'http://localhost:5000/api/bookings',
+                `${import.meta.env.VITE_API_URL}/api/bookings`,
                 payload,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -114,7 +114,7 @@ const HotelBookingPage = () => {
                             <div className="h-48">
                                 <img
                                     src={(hotel.images && hotel.images[0])
-                                        ? (hotel.images[0].startsWith('http') ? hotel.images[0] : `http://localhost:5000${hotel.images[0].startsWith('/') ? '' : '/'}${hotel.images[0].replace(/\\/g, '/')}`)
+                                        ? (hotel.images[0].startsWith('http') ? hotel.images[0] : `${import.meta.env.VITE_API_URL}${hotel.images[0].startsWith('/') ? '' : '/'}${hotel.images[0].replace(/\\/g, '/')}`)
                                         : 'https://via.placeholder.com/400x300'}
                                     alt={hotel.name}
                                     className="w-full h-full object-cover"

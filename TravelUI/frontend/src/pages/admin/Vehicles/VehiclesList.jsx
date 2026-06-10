@@ -96,7 +96,7 @@ const VehiclesList = () => {
                                         <td className="px-6 py-4">
                                             <div className="flex items-center">
                                                 {vehicle.image && (
-                                                    <img src={`http://localhost:5000${vehicle.image}`} alt={vehicle.type} className="h-10 w-10 rounded object-cover mr-3" />
+                                                    <img src={`${import.meta.env.VITE_API_URL}${vehicle.image}`} alt={vehicle.type} className="h-10 w-10 rounded object-cover mr-3" />
                                                 )}
                                                 <div className="text-sm font-medium text-gray-900">{getTypeText(vehicle.type)}</div>
                                             </div>

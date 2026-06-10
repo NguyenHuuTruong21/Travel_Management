@@ -3,7 +3,7 @@ import axios from 'axios';
 import { FiMonitor, FiGift, FiUsers, FiCalendar, FiUser, FiX } from 'react-icons/fi';
 import { useLocation } from 'react-router-dom';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = `${import.meta.env.VITE_API_URL}/api`;
 
 const ServicesPage = () => {
     const [activeTab, setActiveTab] = useState('vehicles'); // vehicles, guides, promotions
@@ -127,7 +127,7 @@ const ServicesPage = () => {
             <div key={item._id} className="bg-white rounded-2xl shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
                 <div className="h-48 overflow-hidden relative">
                     <img
-                        src={item.image ? `http://localhost:5000${item.image}` : 'https://via.placeholder.com/400x300?text=No+Image'}
+                        src={item.image ? `${import.meta.env.VITE_API_URL}${item.image.startsWith('/') ? '' : '/'}${item.image}` : 'https://via.placeholder.com/400x300?text=No+Image'}
                         alt={vehicleName}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                     />

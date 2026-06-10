@@ -1,86 +1,33 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { FiUsers, FiMap, FiShoppingBag, FiDollarSign } from 'react-icons/fi';
+import { FiUsers, FiMap, FiShoppingBag, FiDollarSign, FiPlus, FiArrowRight } from 'react-icons/fi';
+import { Link } from 'react-router-dom';
 import StatCard from '../../components/admin/StatCard';
-import adminService from '../../services/adminService';
+import statsService from '../../services/statsService';
 
 const Dashboard = () => {
-    const [stats, setStats] = useState({
-        users: { total: 0 },
-        tours: { total: 0 },
-        bookings: { total: 0 },
-        revenue: { total: 0 }
-    });
-    const [recentActivities, setRecentActivities] = useState([]);
+    const [summary, setSummary] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    const fetchDashboardData = useCallback(async () => {
+    const fetchSummary = useCallback(async () => {
         setLoading(true);
-
-        // Fetch all data in parallel
-        const [usersResult, toursResult, bookingsResult] = await Promise.all([
-            adminService.getUsers({ page: 1, limit: 1 }),
-            adminService.getTours({ page: 1, limit: 1 }),
-            adminService.getBookings({ page: 1, limit: 10 })
-        ]);
-
-        // Calculate statistics
-        const usersTotal = usersResult.total || 0;
-        const toursTotal = toursResult.total || (toursResult.data?.length || 0);
-        const bookingsData = Array.isArray(bookingsResult.data) ? bookingsResult.data : (Array.isArray(bookingsResult) ? bookingsResult : []);
-        const bookingsTotal = bookingsData.length;
-
-        // Calculate revenue from bookings
-        const revenue = bookingsData.reduce((sum, booking) => {
-            return sum + (booking.totalPrice || 0);
-        }, 0);
-
-        setStats({
-            users: { total: usersTotal }, // Change calculation would require historical data
-            tours: { total: toursTotal },
-            bookings: { total: bookingsTotal },
-            revenue: { total: revenue }
-        });
-
-        // Set recent activities from bookings
-        const activities = bookingsData.slice(0, 5).map(booking => ({
-            type: 'booking',
-            message: `Đặt tour mới #${booking._id?.slice(-6)}`,
-            time: getTimeAgo(booking.createdAt),
-            color: 'green'
-        }));
-
-        setRecentActivities(activities);
-        setLoading(false);
+        try {
+            const result = await statsService.getSummary();
+            if (result.success) {
+                setSummary(result.data);
+            }
+        } catch (error) {
+            console.error('Error fetching summary:', error);
+        } finally {
+            setLoading(false);
+        }
     }, []);
 
     useEffect(() => {
-        fetchDashboardData();
-    }, [fetchDashboardData]);
-
-    const getTimeAgo = (date) => {
-        if (!date) return 'Vừa xong';
-        const now = new Date();
-        const past = new Date(date);
-        const diffMs = now - past;
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-
-        if (diffMins < 1) return 'Vừa xong';
-        if (diffMins < 60) return `${diffMins} phút trước`;
-        if (diffHours < 24) return `${diffHours} giờ trước`;
-        return `${diffDays} ngày trước`;
-    };
+        fetchSummary();
+    }, [fetchSummary]);
 
     const formatCurrency = (amount) => {
-        if (amount >= 1000000000) {
-            return `${(amount / 1000000000).toFixed(1)}B`;
-        } else if (amount >= 1000000) {
-            return `${(amount / 1000000).toFixed(1)}M`;
-        } else if (amount >= 1000) {
-            return `${(amount / 1000).toFixed(1)}K`;
-        }
-        return amount.toString();
+        return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount || 0);
     };
 
     if (loading) {
@@ -92,90 +39,74 @@ const Dashboard = () => {
     }
 
     return (
-        <div>
-            <div className="mb-8">
-                <h1 className="text-3xl font-bold text-gray-800 mb-2">Dashboard</h1>
-                <p className="text-gray-600">Tổng quan hệ thống quản lý du lịch</p>
+        <div className="pb-10">
+            {/* Chào mừng */}
+            <div className="mb-8 p-8 bg-gradient-to-r from-indigo-600 to-purple-600 rounded-2xl shadow-lg text-white">
+                <h1 className="text-3xl font-bold mb-2">Chào mừng trở lại, Admin! 👋</h1>
+                <p className="text-indigo-100 opacity-90">Hệ thống đang hoạt động ổn định. Đây là tóm tắt tình hình kinh doanh của bạn hôm nay.</p>
             </div>
 
-            {/* Statistics Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            {/* Thống kê Realtime Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
                 <StatCard
-                    icon={FiUsers}
-                    title="Tổng người dùng"
-                    value={stats.users.total.toLocaleString()}
-                    change={stats.users.change}
+                    icon={FiDollarSign}
+                    title="Tổng doanh thu (Realtime)"
+                    value={formatCurrency(summary?.totalRevenue)}
                     color="indigo"
                 />
                 <StatCard
+                    icon={FiShoppingBag}
+                    title="Tổng số đơn hàng"
+                    value={summary?.totalBookings?.toLocaleString()}
+                    color="amber"
+                />
+                <StatCard
+                    icon={FiUsers}
+                    title="Tổng người dùng"
+                    value={summary?.totalUsers?.toLocaleString()}
+                    color="emerald"
+                />
+                <StatCard
                     icon={FiMap}
-                    title="Tổng Tours"
-                    value={stats.tours.total}
-                    change={stats.tours.change}
+                    title="Tổng Tours hiện có"
+                    value={summary?.totalTours?.toLocaleString()}
                     color="purple"
                 />
-                <StatCard
-                    icon={FiShoppingBag}
-                    title="Đặt tour"
-                    value={stats.bookings.total}
-                    change={stats.bookings.change}
-                    color="blue"
-                />
-                <StatCard
-                    icon={FiDollarSign}
-                    title="Doanh thu"
-                    value={`${formatCurrency(stats.revenue.total)} VNĐ`}
-                    change={stats.revenue.change}
-                    color="green"
-                />
             </div>
 
-            {/* Quick Actions */}
-            <div className="bg-white rounded-xl shadow-md p-6 mb-8">
-                <h2 className="text-xl font-bold text-gray-800 mb-4">Thao tác nhanh</h2>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <a
-                        href="/admin/tours"
-                        className="p-4 border-2 border-indigo-200 rounded-lg hover:border-indigo-500 hover:bg-indigo-50 transition-all duration-200 text-center"
-                    >
-                        <FiMap className="mx-auto mb-2 text-indigo-600" size={32} />
-                        <p className="font-semibold text-gray-800">Thêm Tour mới</p>
-                    </a>
-                    <a
-                        href="/admin/bookings"
-                        className="p-4 border-2 border-purple-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all duration-200 text-center"
-                    >
-                        <FiShoppingBag className="mx-auto mb-2 text-purple-600" size={32} />
-                        <p className="font-semibold text-gray-800">Quản lý đặt tour</p>
-                    </a>
-                    <a
-                        href="/admin/users"
-                        className="p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 text-center"
-                    >
-                        <FiUsers className="mx-auto mb-2 text-blue-600" size={32} />
-                        <p className="font-semibold text-gray-800">Quản lý người dùng</p>
-                    </a>
-                </div>
-            </div>
-
-            {/* Recent Activity */}
-            <div className="bg-white rounded-xl shadow-md p-6">
-                <h2 className="text-xl font-bold text-gray-800 mb-4">Hoạt động gần đây</h2>
-                {recentActivities.length > 0 ? (
-                    <div className="space-y-4">
-                        {recentActivities.map((activity, index) => (
-                            <div key={index} className="flex items-center p-3 bg-gray-50 rounded-lg">
-                                <div className={`w-2 h-2 bg-${activity.color}-500 rounded-full mr-3`}></div>
-                                <div className="flex-1">
-                                    <p className="text-sm font-medium text-gray-800">{activity.message}</p>
-                                    <p className="text-xs text-gray-500">{activity.time}</p>
-                                </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* Lối tắt nhanh */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+                    <h3 className="text-lg font-bold text-gray-800 mb-4">Lối tắt nhanh</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                        <Link to="/admin/tours/create" className="flex items-center p-4 bg-blue-50 rounded-xl hover:bg-blue-100 transition-colors group">
+                            <div className="p-2 bg-blue-600 text-white rounded-lg mr-3">
+                                <FiPlus size={20} />
                             </div>
-                        ))}
+                            <span className="font-semibold text-blue-700 text-sm">Thêm Tour mới</span>
+                        </Link>
+                        <Link to="/admin/bookings" className="flex items-center p-4 bg-purple-50 rounded-xl hover:bg-purple-100 transition-colors group">
+                            <div className="p-2 bg-purple-600 text-white rounded-lg mr-3">
+                                <FiShoppingBag size={20} />
+                            </div>
+                            <span className="font-semibold text-purple-700 text-sm">Quản lý đơn hàng</span>
+                        </Link>
                     </div>
-                ) : (
-                    <p className="text-gray-500 text-center py-8">Chưa có hoạt động nào</p>
-                )}
+                </div>
+
+                {/* Phân tích nâng cao Banner */}
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-800 mb-2">Báo cáo & Phân tích chuyên sâu</h3>
+                        <p className="text-sm text-gray-500 mb-4">Xem biểu đồ doanh thu theo thời gian, địa điểm, và hành vi khách hàng để đưa ra quyết định kinh doanh đúng đắn.</p>
+                    </div>
+                    <Link 
+                        to="/admin/reports/revenue" 
+                        className="flex items-center justify-center gap-2 py-3 bg-gray-50 hover:bg-gray-100 text-indigo-600 font-bold rounded-xl transition-all"
+                    >
+                        Xem báo cáo nâng cao <FiArrowRight />
+                    </Link>
+                </div>
             </div>
         </div>
     );

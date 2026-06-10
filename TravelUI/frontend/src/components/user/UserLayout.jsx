@@ -2,11 +2,13 @@ import React, { useContext, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { AuthContext } from '../../contexts/AuthContext';
 import NotificationDropdown from './NotificationDropdown';
-import { FiMenu, FiX, FiUser, FiLogOut, FiFacebook, FiInstagram, FiTwitter, FiMapPin, FiPhone, FiMail } from 'react-icons/fi';
+import { FiMenu, FiX, FiUser, FiLogOut, FiFacebook, FiInstagram, FiTwitter, FiMapPin, FiPhone, FiMail, FiCompass } from 'react-icons/fi';
+import AIRecommendationModal from '../AI/AIRecommendationModal';
 
 const UserLayout = () => {
     const { user, logout } = useContext(AuthContext);
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [isAIModalOpen, setIsAIModalOpen] = useState(false);
     const location = useLocation();
 
     const isActive = (path) => location.pathname === path;
@@ -49,6 +51,11 @@ const UserLayout = () => {
                             <Link to="/contact" className={`text-base font-medium transition-colors ${isActive('/contact') ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'}`}>
                                 Liên hệ
                             </Link>
+                            {user && (
+                                <Link to="/my-itinerary" className={`text-base font-medium transition-colors flex items-center gap-1 ${isActive('/my-itinerary') ? 'text-blue-600' : 'text-gray-600 hover:text-blue-600'}`}>
+                                    🗺️ Lịch trình
+                                </Link>
+                            )}
                         </nav>
 
                         {/* User Actions */}
@@ -60,7 +67,7 @@ const UserLayout = () => {
                                         <div className="flex items-center gap-2 hover:bg-gray-50 px-3 py-2 rounded-full transition-colors cursor-pointer">
                                             <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 overflow-hidden">
                                                 {user.avatar ? (
-                                                    <img src={user.avatar.startsWith('http') ? user.avatar : `http://localhost:5000${user.avatar}`} alt={user.fullName} className="w-full h-full object-cover" />
+                                                    <img src={user.avatar.startsWith('http') ? user.avatar : `${import.meta.env.VITE_API_URL}${user.avatar}`} alt={user.fullName} className="w-full h-full object-cover" />
                                                 ) : (
                                                     <FiUser />
                                                 )}
@@ -118,6 +125,9 @@ const UserLayout = () => {
                             <Link to="/services" className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50">Dịch vụ</Link>
                             <Link to="/blog" className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50">Tin tức</Link>
                             <Link to="/contact" className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50">Liên hệ</Link>
+                            {user && (
+                                <Link to="/my-itinerary" className="block px-3 py-2 rounded-md text-base font-medium text-blue-600 hover:bg-blue-50">🗺️ Lịch trình của tôi</Link>
+                            )}
 
                             <div className="border-t border-gray-100 my-2 pt-2">
                                 {user ? (
@@ -226,6 +236,30 @@ const UserLayout = () => {
                     </div>
                 </div>
             </footer>
+
+            {/* AI Floating Button */}
+            <button
+                onClick={() => setIsAIModalOpen(true)}
+                className="fixed bottom-6 right-6 z-40 bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-4 rounded-full shadow-2xl hover:shadow-indigo-500/50 hover:scale-110 transition-all duration-300 group flex items-center justify-center"
+                title="Trợ Lý AI Gợi ý Tour"
+            >
+                <div className="relative">
+                    <FiCompass size={28} className="animate-pulse" />
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-white"></span>
+                    </span>
+                </div>
+                <span className="max-w-0 overflow-hidden whitespace-nowrap group-hover:max-w-xs transition-all duration-500 ease-in-out font-bold text-sm ml-0 group-hover:ml-2">
+                    Hỏi Trợ Lý AI
+                </span>
+            </button>
+
+            {/* AI Modal component */}
+            <AIRecommendationModal
+                isOpen={isAIModalOpen}
+                onClose={() => setIsAIModalOpen(false)}
+            />
         </div>
     );
 };

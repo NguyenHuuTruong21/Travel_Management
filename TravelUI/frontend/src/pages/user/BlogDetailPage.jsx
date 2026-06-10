@@ -12,7 +12,7 @@ const BlogDetailPage = () => {
     useEffect(() => {
         const fetchPost = async () => {
             try {
-                const response = await axios.get(`http://localhost:5000/api/posts/${id}`);
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/blogs/${id}`);
                 setPost(response.data.post || response.data.data || response.data);
             } catch (err) {
                 console.error('Error fetching post:', err);
@@ -50,7 +50,7 @@ const BlogDetailPage = () => {
             <div className="h-[400px] relative w-full">
                 <img
                     src={post.image
-                        ? (post.image.startsWith('http') ? post.image : `http://localhost:5000${post.image.startsWith('/') ? '' : '/'}${post.image.replace(/\\/g, '/')}`)
+                        ? (post.image.startsWith('http') ? post.image : `${import.meta.env.VITE_API_URL}${post.image.startsWith('/') ? '' : '/'}${post.image.replace(/\\/g, '/')}`)
                         : 'https://via.placeholder.com/1200x600?text=No+Image'}
                     alt={post.title}
                     className="w-full h-full object-cover"

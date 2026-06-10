@@ -5,6 +5,7 @@ const Tour = require('../models/Tour');
 const Hotel = require('../models/Hotel');
 const notification = require('../utils/notification');
 const paymentMock = require('../utils/paymentMock');
+const paymentService = require('../utils/payment/paymentService');
 
 //  Helper: check startDate validity (>= today)
 const isValidStartDate = (d) => {
@@ -260,50 +261,82 @@ exports.getBookingDetail = async (req, res, next) => {
 
 // Post Payment Mock
 exports.payBooking = async (req, res, next) => {
+  // try {
+  //   const bookingId = req.params.id;
+  //   const { method, payload } = req.body; // payload: { cardNumber, ... }
+  //   if (!mongoose.Types.ObjectId.isValid(bookingId))
+  //     return res.status(400).json({ message: 'ID không hợp lệ' });
+    
+  //   const booking = await Booking.findById(bookingId).populate('user', 'email');
+  //   if (!booking) return res.status(404).json({ message: 'Booking không tồn tại' });
+
+  //   if (String(booking.user._id) !== req.user.id) return res.status(403).json({ message: 'Không phải chủ đơn' });
+  //   if (booking.status !== 'Pending') return res.status(400).json({ message: 'Chỉ thanh toán đơn Pending' });
+
+  //   // process payment mock
+  //   const result = await paymentMock.processPayment({ method, payload });
+
+  //   if (result.success) {
+  //     booking.status = 'Processing';
+  //     booking.timeline.push({ status: 'Processing', note: 'Thanh toán thành công', at: new Date() });
+  //     await booking.save();
+
+  //     // notify user
+  //     const email = booking.user.email;
+  //     await notification.notifyBookingStatus({ userId: booking.user._id, email, bookingId: booking._id, status: 'Confirmed' });
+
+  //     return res.json({ message: 'Thanh toán thành công', bookingId: booking._id });
+  //   } else {
+  //     booking.status = 'Failed';
+  //     booking.timeline.push({ status: 'Failed', note: 'Thanh toán thất bại', at: new Date() });
+  //     await booking.save();
+
+  //     // rollback seats: subtract bookedSeats
+  //     const tour = await Tour.findById(booking.tour);
+  //     if (tour) {
+  //       tour.bookedSeats = Math.max(0, (tour.bookedSeats || 0) - booking.quantity);
+  //       await tour.save();
+  //     }
+
+  //     const email = booking.user.email;
+  //     await notification.notifyBookingStatus({ userId: booking.user._id, email, bookingId: booking._id, status: 'Cancelled', note: 'Thanh toán thất bại', type: booking.type });
+
+  //     return res.status(400).json({ message: 'Thanh toán thất bại', reason: result });
+  //   }
+
+  // } catch (err) { next(err); }
   try {
     const bookingId = req.params.id;
-    const { method, payload } = req.body; // payload: { cardNumber, ... }
+    const { paymentMethod } = req.body; // 'VNPay' hoặc 'MoMo'
+
     if (!mongoose.Types.ObjectId.isValid(bookingId))
       return res.status(400).json({ message: 'ID không hợp lệ' });
-    
+
+    if (!['VNPay', 'MoMo'].includes(paymentMethod))
+      return res.status(400).json({ message: 'Phương thức thanh toán không hợp lệ. Chỉ hỗ trợ VNPay và MoMo' });
+
     const booking = await Booking.findById(bookingId).populate('user', 'email');
     if (!booking) return res.status(404).json({ message: 'Booking không tồn tại' });
 
-    if (String(booking.user._id) !== req.user.id) return res.status(403).json({ message: 'Không phải chủ đơn' });
-    if (booking.status !== 'Pending') return res.status(400).json({ message: 'Chỉ thanh toán đơn Pending' });
+    if (String(booking.user._id) !== req.user.id)
+      return res.status(403).json({ message: 'Không phải chủ đơn' });
 
-    // process payment mock
-    const result = await paymentMock.processPayment({ method, payload });
+    if (booking.status !== 'Pending' || booking.paymentStatus !== 'Pending')
+      return res.status(400).json({ message: 'Chỉ thanh toán đơn đang Pending' });
 
-    if (result.success) {
-      booking.status = 'Confirmed';
-      booking.timeline.push({ status: 'Confirmed', note: 'Thanh toán thành công', at: new Date() });
-      await booking.save();
+    // Tạo URL thanh toán
+    const paymentUrl = await paymentService.createPaymentUrl(booking, paymentMethod, req);
 
-      // notify user
-      const email = booking.user.email;
-      await notification.notifyBookingStatus({ userId: booking.user._id, email, bookingId: booking._id, status: 'Confirmed' });
-
-      return res.json({ message: 'Thanh toán thành công', bookingId: booking._id });
-    } else {
-      booking.status = 'Cancelled';
-      booking.timeline.push({ status: 'Cancelled', note: 'Thanh toán thất bại', at: new Date() });
-      await booking.save();
-
-      // rollback seats: subtract bookedSeats
-      const tour = await Tour.findById(booking.tour);
-      if (tour) {
-        tour.bookedSeats = Math.max(0, (tour.bookedSeats || 0) - booking.quantity);
-        await tour.save();
-      }
-
-      const email = booking.user.email;
-      await notification.notifyBookingStatus({ userId: booking.user._id, email, bookingId: booking._id, status: 'Cancelled', note: 'Thanh toán thất bại', type: booking.type });
-
-      return res.status(400).json({ message: 'Thanh toán thất bại', reason: result });
-    }
-
-  } catch (err) { next(err); }
+    res.json({
+      success: true,
+      message: `Chuyển hướng đến cổng thanh toán ${paymentMethod}`,
+      paymentUrl,
+      bookingId: booking._id
+    });
+  } catch (err) {
+    console.error('payBooking error:', err);
+    next(err);
+  }
 };
 
 // Get All Bookings (Admin)

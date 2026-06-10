@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, AuthContext } from './contexts/AuthContext';
+import { SocketProvider } from './contexts/SocketContext';
 import LoginPage from './pages/auth/LoginPage';
 import RegisterPage from './pages/auth/RegisterPage';
 // Forgot/Reset password pages removed
@@ -24,11 +25,13 @@ import Banners from './pages/admin/CMS/Banners';
 import Posts from './pages/admin/CMS/Posts';
 import Promotions from './pages/admin/CMS/Promotions';
 import ReviewsList from './pages/admin/Reviews/ReviewsList';
-import RevenueReport from './pages/admin/Reports/RevenueReport';
+import AdvancedRevenueReport from './pages/admin/Reports/AdvancedRevenueReport';
 import CustomerReport from './pages/admin/Reports/CustomerReport';
 import ServiceReport from './pages/admin/Reports/ServiceReport';
 import Settings from './pages/admin/Settings/Settings';
 import ContactsList from './pages/admin/Contacts/ContactsList';
+import VouchersList from './pages/admin/Vouchers/VouchersList';
+import VoucherForm from './pages/admin/Vouchers/VoucherForm';
 
 // User imports
 import UserLayout from './components/user/UserLayout';
@@ -44,6 +47,10 @@ import ContactPage from './pages/user/ContactPage';
 import AboutPage from './pages/user/AboutPage';
 import ProfilePage from './pages/user/ProfilePage';
 import ServicesPage from './pages/user/ServicesPage';
+import PaymentSuccess from './pages/user/PaymentSuccess';
+import PaymentError from './pages/user/PaymentError';
+import SimulatedPaymentPage from './pages/user/SimulatedPaymentPage';
+import MyItineraryPage from './pages/user/MyItineraryPage';
 
 const PrivateRoute = ({ children }) => {
   const { user } = useContext(AuthContext);
@@ -53,8 +60,9 @@ const PrivateRoute = ({ children }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
-        <Routes>
+      <SocketProvider>
+        <Router>
+          <Routes>
           {/* User Routes */}
           <Route path="/" element={<UserLayout />}>
             <Route index element={<Home />} />
@@ -69,6 +77,13 @@ function App() {
             <Route path="about" element={<AboutPage />} />
             <Route path="services" element={<ServicesPage />} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="payment-success" element={<PaymentSuccess />} />
+            <Route path="payment-error" element={<PaymentError />} />
+            <Route path="payment-simulate" element={<SimulatedPaymentPage />} />
+            {/* ── Lịch trình cá nhân (yêu cầu đăng nhập) ── */}
+            <Route path="my-itinerary" element={
+              <PrivateRoute><MyItineraryPage /></PrivateRoute>
+            } />
           </Route>
 
           <Route path="/login" element={<LoginPage />} />
@@ -133,17 +148,21 @@ function App() {
             <Route path="banners" element={<Banners />} />
             <Route path="posts" element={<Posts />} />
             <Route path="promotions" element={<Promotions />} />
-            <Route path="reports/revenue" element={<RevenueReport />} />
+            <Route path="reports/revenue" element={<AdvancedRevenueReport />} />
             <Route path="reports/customers" element={<CustomerReport />} />
             <Route path="reports/services" element={<ServiceReport />} />
             <Route path="settings" element={<Settings />} />
             <Route path="contacts" element={<ContactsList />} />
+            <Route path="vouchers" element={<VouchersList />} />
+            <Route path="vouchers/create" element={<VoucherForm />} />
+            <Route path="vouchers/:id" element={<VoucherForm />} />
           </Route>
 
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </Router>
-    </AuthProvider>
+    </SocketProvider>
+  </AuthProvider>
   );
 }
 

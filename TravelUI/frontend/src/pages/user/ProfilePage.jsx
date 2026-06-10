@@ -5,6 +5,8 @@ import { AuthContext } from '../../contexts/AuthContext';
 import axios from 'axios';
 import { FiUser, FiPackage, FiCalendar, FiClock, FiCamera, FiLock, FiEdit2, FiStar } from 'react-icons/fi';
 import ReviewModal from '../../components/user/ReviewModal';
+import PaymentCheckout from '../../components/Payment/PaymentCheckout';
+import { FiDollarSign } from 'react-icons/fi';
 
 const ProfilePage = () => {
     const { user, logout, login } = useContext(AuthContext); // Re-login to update context if needed, or update manually
@@ -29,6 +31,10 @@ const ProfilePage = () => {
     const [isReviewOpen, setIsReviewOpen] = useState(false);
     const [selectedTour, setSelectedTour] = useState(null);
 
+    // Payment State
+    const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+    const [selectedBooking, setSelectedBooking] = useState(null);
+
     const handleOpenReview = (tour) => {
         setSelectedTour(tour);
         setIsReviewOpen(true);
@@ -37,6 +43,11 @@ const ProfilePage = () => {
     const handleReviewSuccess = () => {
         alert("Cảm ơn bạn đã đánh giá!");
         fetchUserBookings(); // Refresh bookings to likely update UI if needed
+    };
+
+    const handleOpenPayment = (booking) => {
+        setSelectedBooking(booking);
+        setIsPaymentOpen(true);
     };
 
     useEffect(() => {
@@ -61,7 +72,7 @@ const ProfilePage = () => {
         try {
             setError(null);
             const token = localStorage.getItem('accessToken');
-            const response = await axios.get('http://localhost:5000/api/bookings/user', {
+            const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/bookings/user`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             console.log('Bookings response:', response.data);
@@ -104,7 +115,7 @@ const ProfilePage = () => {
             if (formData.password) data.append('password', formData.password);
             if (formData.avatar) data.append('avatar', formData.avatar);
 
-            const response = await axios.put('http://localhost:5000/api/auth/profile', data, {
+            const response = await axios.put(`${import.meta.env.VITE_API_URL}/api/auth/profile`, data, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }
@@ -130,9 +141,10 @@ const ProfilePage = () => {
     const getStatusColor = (status) => {
         switch (status) {
             case 'Confirmed': return 'bg-green-100 text-green-800';
+            case 'Paid': return 'bg-blue-100 text-blue-800';
             case 'Pending': return 'bg-yellow-100 text-yellow-800';
             case 'Cancelled': return 'bg-red-100 text-red-800';
-            case 'Completed': return 'bg-blue-100 text-blue-800';
+            case 'Completed': return 'bg-indigo-100 text-indigo-800';
             default: return 'bg-gray-100 text-gray-800';
         }
     };
@@ -140,7 +152,8 @@ const ProfilePage = () => {
     const getStatusText = (status) => {
         switch (status) {
             case 'Confirmed': return 'Đã xác nhận';
-            case 'Pending': return 'Chờ xử lý';
+            case 'Paid': return 'Đã thanh toán';
+            case 'Pending': return 'Chờ thanh toán';
             case 'Cancelled': return 'Đã hủy';
             case 'Completed': return 'Hoàn thành';
             default: return status;
@@ -159,7 +172,7 @@ const ProfilePage = () => {
                             <div className="p-6 text-center border-b border-gray-100">
                                 <div className="w-24 h-24 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4 text-indigo-600 relative overflow-hidden">
                                     {user.avatar || previewAvatar ? (
-                                        <img src={previewAvatar || (user.avatar?.startsWith('http') ? user.avatar : `http://localhost:5000${user.avatar}`)} alt="Avatar" className="w-full h-full object-cover" />
+                                        <img src={previewAvatar || (user.avatar?.startsWith('http') ? user.avatar : `${import.meta.env.VITE_API_URL}${user.avatar}`)} alt="Avatar" className="w-full h-full object-cover" />
                                     ) : (
                                         <FiUser size={40} />
                                     )}
@@ -258,6 +271,14 @@ const ProfilePage = () => {
                                                         <FiStar /> Viết đánh giá
                                                     </button>
                                                 )}
+                                                {booking.paymentStatus === 'Pending' && booking.status !== 'Cancelled' && (
+                                                    <button
+                                                        onClick={() => handleOpenPayment(booking)}
+                                                        className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                                                    >
+                                                        <FiDollarSign /> Thanh toán ngay
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))
@@ -283,6 +304,32 @@ const ProfilePage = () => {
                                         tourName={selectedTour.name}
                                         onSuccess={handleReviewSuccess}
                                     />
+                                )}
+
+                                {/* Payment Modal */}
+                                {isPaymentOpen && selectedBooking && (
+                                    <div 
+                                        className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                                        onClick={(e) => { if (e.target === e.currentTarget) setIsPaymentOpen(false); }}
+                                    >
+                                        <div className="relative w-full max-w-md">
+                                            {/* Nút × Đóng — nằm trong header của modal */}
+                                            <button
+                                                id="payment-close-btn"
+                                                onClick={() => setIsPaymentOpen(false)}
+                                                className="absolute top-3 right-3 z-10 w-7 h-7 flex items-center justify-center rounded-full bg-white/20 hover:bg-white/40 text-white transition-all"
+                                                aria-label="Đóng thanh toán"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
+                                                    <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                                                </svg>
+                                            </button>
+                                            <PaymentCheckout 
+                                                bookingData={selectedBooking} 
+                                                onPaymentError={(err) => { alert(err); setIsPaymentOpen(false); }}
+                                            />
+                                        </div>
+                                    </div>
                                 )}
                             </div>
                         )}
@@ -314,7 +361,7 @@ const ProfilePage = () => {
                                             <div className="flex items-center gap-4">
                                                 <div className="w-20 h-20 bg-gray-100 rounded-full overflow-hidden relative">
                                                     {previewAvatar || user.avatar ? (
-                                                        <img src={previewAvatar || (user.avatar?.startsWith('http') ? user.avatar : `http://localhost:5000${user.avatar}`)} alt="Preview" className="w-full h-full object-cover" />
+                                                        <img src={previewAvatar || (user.avatar?.startsWith('http') ? user.avatar : `${import.meta.env.VITE_API_URL}${user.avatar}`)} alt="Preview" className="w-full h-full object-cover" />
                                                     ) : (
                                                         <div className="w-full h-full flex items-center justify-center text-gray-400"><FiUser size={32} /></div>
                                                     )}

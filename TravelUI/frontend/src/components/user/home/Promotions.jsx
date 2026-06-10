@@ -8,7 +8,7 @@ const Promotions = () => {
     useEffect(() => {
         const fetchPromotions = async () => {
             try {
-                const response = await axios.get('http://localhost:5000/api/promotions');
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/promotions`);
                 setPromotions(response.data.data || []);
             } catch (error) {
                 console.error('Error fetching promotions:', error);
@@ -33,7 +33,9 @@ const Promotions = () => {
                         <div key={promo._id} className="bg-white rounded-2xl shadow-lg overflow-hidden flex flex-col hover:shadow-xl transition-all transform hover:-translate-y-1">
                             <div className="relative h-48">
                                 <img
-                                    src={promo.image || 'https://via.placeholder.com/400x200'}
+                                    src={promo.image 
+                                        ? (promo.image.startsWith('http') ? promo.image : `${import.meta.env.VITE_API_URL}${promo.image.startsWith('/') ? '' : '/'}${promo.image.replace(/\\/g, '/')}`)
+                                        : 'https://via.placeholder.com/400x200'}
                                     alt={promo.title}
                                     className="w-full h-full object-cover"
                                 />

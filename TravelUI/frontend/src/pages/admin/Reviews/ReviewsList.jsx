@@ -54,7 +54,7 @@ const ReviewsList = () => {
                                                 {review.images.map((img, idx) => (
                                                     <img
                                                         key={idx}
-                                                        src={img.startsWith('http') ? img : `http://localhost:5000${img}`}
+                                                        src={img.startsWith('http') ? img : `${import.meta.env.VITE_API_URL}${img}`}
                                                         alt="Review"
                                                         className="w-16 h-16 object-cover rounded"
                                                     />

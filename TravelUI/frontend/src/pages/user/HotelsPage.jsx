@@ -18,7 +18,7 @@ const HotelsPage = () => {
 
     const fetchHotels = async () => {
         try {
-            const response = await axios.get('http://localhost:5000/api/hotels');
+            const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/hotels`);
             setHotels(response.data.data || response.data || []);
         } catch (error) {
             console.error('Error fetching hotels:', error);
@@ -152,7 +152,7 @@ const HotelsPage = () => {
                                     <div className="relative h-64 overflow-hidden">
                                         <img
                                             src={(hotel.images && hotel.images[0])
-                                                ? (hotel.images[0].startsWith('http') ? hotel.images[0] : `http://localhost:5000${hotel.images[0].startsWith('/') ? '' : '/'}${hotel.images[0].replace(/\\/g, '/')}`)
+                                                ? (hotel.images[0].startsWith('http') ? hotel.images[0] : `${import.meta.env.VITE_API_URL}${hotel.images[0].startsWith('/') ? '' : '/'}${hotel.images[0].replace(/\\/g, '/')}`)
                                                 : 'https://via.placeholder.com/400x300'}
                                             alt={hotel.name}
                                             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"

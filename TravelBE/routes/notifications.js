@@ -3,17 +3,24 @@ const router = express.Router();
 
 const auth = require('../middlewares/auth');
 const controller = require('../controllers/notificationController');
+const tripCtrl = require('../controllers/tripController');
 
-// create notification (admin or internal modules) - allow admin role
+// ─── Admin: tạo notification thủ công ───
 router.post('/', auth(['admin']), controller.create);
 
-// get notifications for current user
-router.get('/user', auth(), controller.getForUser);
+// ─── User: lấy danh sách thông báo ───
+// GET /api/notifications        → alias friendly (dùng cho MyItinerary / NotificationBell)
+// GET /api/notifications/user   → route cũ vẫn hoạt động
+router.get('/unread-count', auth(), tripCtrl.getUnreadCount);   // phải TRƯỚC /:id
+router.get('/',             auth(), tripCtrl.getNotifications);
+router.get('/user',         auth(), controller.getForUser);
 
-// mark single notification read
+// ─── Mark as read ───
+// PATCH (cũ) + PUT (alias mới cho frontend itinerary)
 router.patch('/:id/read', auth(), controller.markRead);
+router.put('/:id/read',   auth(), tripCtrl.markNotificationRead);
 
-// mark multiple as read
+// ─── Mark nhiều thông báo đã đọc ───
 router.patch('/mark-many-read', auth(), controller.markManyRead);
 
 module.exports = router;

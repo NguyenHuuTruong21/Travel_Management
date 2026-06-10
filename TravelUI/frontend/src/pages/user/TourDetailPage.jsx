@@ -15,7 +15,7 @@ const TourDetailPage = () => {
     useEffect(() => {
         const fetchTourDetail = async () => {
             try {
-                const response = await axios.get(`http://localhost:5000/api/tours/${id}`);
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/tours/${id}`);
                 setTour(response.data.tour);
             } catch (error) {
                 console.error('Error fetching tour detail:', error);
@@ -74,7 +74,7 @@ const TourDetailPage = () => {
                         return (
                             <div key={index} className={`${spanClass} rounded-xl overflow-hidden cursor-pointer relative`}>
                                 <img
-                                    src={img.startsWith('http') ? img : `http://localhost:5000${img.startsWith('/') ? '' : '/'}${img.replace(/\\/g, '/')}`}
+                                    src={img.startsWith('http') ? img : `${import.meta.env.VITE_API_URL}${img.startsWith('/') ? '' : '/'}${img.replace(/\\/g, '/')}`}
                                     alt={`${tour.name} - ${index + 1}`}
                                     className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
                                 />

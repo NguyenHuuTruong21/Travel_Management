@@ -9,7 +9,7 @@ const Reviews = () => {
         const fetchReviews = async () => {
             try {
                 // Assuming there's an endpoint for featured reviews or just get latest
-                const response = await axios.get('http://localhost:5000/api/reviews?limit=3');
+                const response = await axios.get(`${import.meta.env.VITE_API_URL}/api/reviews?limit=3`);
                 setReviews(response.data.data || []);
             } catch (error) {
                 console.error('Error fetching reviews:', error);

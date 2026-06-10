@@ -54,7 +54,7 @@ const ReviewModal = ({ isOpen, onClose, tourId, tourName, onSuccess }) => {
                 formData.append('images', image);
             });
 
-            await axios.post('http://localhost:5000/api/reviews', formData, {
+            await axios.post(`${import.meta.env.VITE_API_URL}/api/reviews`, formData, {
                 headers: {
                     Authorization: `Bearer ${token}`
                 }

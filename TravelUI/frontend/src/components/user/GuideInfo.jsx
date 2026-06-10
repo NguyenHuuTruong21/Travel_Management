@@ -9,7 +9,7 @@ const GuideInfo = ({ guide }) => {
 
     const avatarUrl = guide.avatar?.startsWith('http')
         ? guide.avatar
-        : `http://localhost:5000${guide.avatar?.startsWith('/') ? '' : '/'}${guide.avatar?.replace(/\\/g, '/')}`;
+        : `${import.meta.env.VITE_API_URL}${guide.avatar?.startsWith('/') ? '' : '/'}${guide.avatar?.replace(/\\/g, '/')}`;
 
     return (
         <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-100">

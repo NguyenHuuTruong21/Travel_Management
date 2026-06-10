@@ -46,7 +46,7 @@ const HotelForm = () => {
             // Fix URL prefix for existing images if needed (though list view handles it, form needs it too)
             // But usually the URL stored in DB is relative. We should prepend domain for display.
             const images = hotel.images || [];
-            const fixedImages = images.map(img => img.startsWith('http') ? img : `http://localhost:5000${img.startsWith('/') ? '' : '/'}${img.replace(/\\/g, '/')}`);
+            const fixedImages = images.map(img => img.startsWith('http') ? img : `${import.meta.env.VITE_API_URL}${img.startsWith('/') ? '' : '/'}${img.replace(/\\/g, '/')}`);
             setExistingImages(fixedImages);
             // Store original relative paths for removal logic if backend expects them
             // Or just store the full URL and let backend handle?
@@ -92,7 +92,7 @@ const HotelForm = () => {
     const removeExistingImage = (index) => {
         const imageToRemove = existingImages[index];
         // Strip domain to get relative path for DB removal
-        const relativePath = imageToRemove.replace('http://localhost:5000', '');
+        const relativePath = imageToRemove.replace(`${import.meta.env.VITE_API_URL}`, '');
 
         setExistingImages(prev => prev.filter((_, i) => i !== index));
         setImagesToRemove(prev => [...prev, relativePath]);

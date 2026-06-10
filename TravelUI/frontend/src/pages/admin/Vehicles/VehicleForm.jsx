@@ -43,7 +43,7 @@ const VehicleForm = () => {
                 status: vehicle.status || 'active'
             });
             if (vehicle.image) {
-                setExistingImage(vehicle.image.startsWith('http') ? vehicle.image : `http://localhost:5000${vehicle.image}`);
+                setExistingImage(vehicle.image.startsWith('http') ? vehicle.image : `${import.meta.env.VITE_API_URL}${vehicle.image}`);
             }
         }
         setLoading(false);
